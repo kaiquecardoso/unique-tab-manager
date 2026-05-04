@@ -115,6 +115,138 @@
   color: var(--text-muted);
 }
 
+.sidebar-calendar-card {
+  margin-bottom: 20px;
+  padding: 12px 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.sidebar-calendar-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.sidebar-calendar-clear {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.sidebar-calendar-clear:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.sidebar-day-picker.rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  --rdp-day-height: 32px;
+  --rdp-day-width: 32px;
+  --rdp-day_button-height: 30px;
+  --rdp-day_button-width: 30px;
+  --rdp-day_button-border-radius: 8px;
+  --rdp-selected-border: 1px solid var(--rdp-accent-color);
+  --rdp-nav-height: 2.25rem;
+  --rdp-nav_button-width: 2rem;
+  --rdp-nav_button-height: 2rem;
+  --rdp-outside-opacity: 0.38;
+  --rdp-weekday-opacity: 0.55;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+/* Evita números gigantes no intervalo (estilo padrão da lib) */
+.sidebar-day-picker .rdp-selected {
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.sidebar-day-picker .rdp-range_middle,
+.sidebar-day-picker .rdp-range_start,
+.sidebar-day-picker .rdp-range_end {
+  font-size: inherit;
+}
+
+.sidebar-day-picker .rdp-day_button {
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sidebar-cal-day-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
+}
+
+.sidebar-cal-day-label {
+  line-height: 1.1;
+}
+
+.sidebar-cal-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Intensidade por volume relativo ao dia mais carregado (tom vermelho) */
+.sidebar-cal-dot--low {
+  background: color-mix(in srgb, var(--danger) 38%, var(--text-muted));
+}
+
+.sidebar-cal-dot--mid {
+  background: color-mix(in srgb, var(--danger) 72%, var(--surface));
+}
+
+.sidebar-cal-dot--high {
+  background: var(--danger);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.sidebar-day-picker .rdp-weekday {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.sidebar-day-picker .rdp-caption_label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-day-picker .rdp-button_next,
+.sidebar-day-picker .rdp-button_previous {
+  color: var(--text-secondary);
+}
+
+.sidebar-day-picker
+  td.rdp-day:not(.rdp-range_start):not(.rdp-range_end):not(
+    .rdp-range_middle
+  ):not(.rdp-selected)
+  .rdp-day_button:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .sidebar-theme-row {
   display: flex;
   align-items: center;

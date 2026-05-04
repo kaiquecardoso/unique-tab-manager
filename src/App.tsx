@@ -1,7 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { DateRange } from 'react-day-picker'
+import { DayPicker } from 'react-day-picker'
+import { ptBR } from 'date-fns/locale'
 import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
+import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
+import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
 import { mergeNewTags } from './lib/tags'
+import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
+import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
 import './App.css'
 
@@ -215,11 +222,13 @@ function filterGroups(
   groups: TabGroup[],
   q: string,
   activeTags: Set<string>,
+  dateRange: DateRange | undefined,
 ): TabGroup[] {
   const needle = q.trim().toLowerCase()
   const tagFiltering = activeTags.size > 0
 
   return groups
+    .filter((g) => groupSavedInDateRange(g, dateRange))
     .map((g) => {
       const tabs = g.tabs.filter((t) => {
         if (tagFiltering && !t.tags.some((tag) => activeTags.has(tag))) {
@@ -375,6 +384,9 @@ function App() {
   const [ready, setReady] = useState(false)
   const [search, setSearch] = useState('')
   const [activeTagFilters, setActiveTagFilters] = useState<string[]>([])
+  const [groupDateRange, setGroupDateRange] = useState<
+    DateRange | undefined
+  >()
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
@@ -530,9 +542,20 @@ function App() {
       .sort((a, b) => a.tag.localeCompare(b.tag, 'pt-BR'))
   }, [groups])
 
+  const { map: tabsByDayMap, max: maxTabsPerDay } = useMemo(
+    () => buildTabsCountByLocalDay(groups),
+    [groups],
+  )
+
+  const sidebarCalendarDayButton = useMemo(
+    () => createSidebarCalendarDayButton(tabsByDayMap, maxTabsPerDay),
+    [tabsByDayMap, maxTabsPerDay],
+  )
+
   const visible = useMemo(
-    () => filterGroups(orderedGroups, search, activeTagSet),
-    [orderedGroups, search, activeTagSet],
+    () =>
+      filterGroups(orderedGroups, search, activeTagSet, groupDateRange),
+    [orderedGroups, search, activeTagSet, groupDateRange],
   )
 
   const totalTabs = useMemo(
@@ -652,6 +675,31 @@ function App() {
           </div>
         </div>
 
+        <div className="sidebar-calendar-card">
+          <DayPicker
+            mode="range"
+            selected={groupDateRange}
+            onSelect={setGroupDateRange}
+            locale={ptBR}
+            weekStartsOn={1}
+            showOutsideDays
+            fixedWeeks
+            className="sidebar-day-picker"
+            components={{ DayButton: sidebarCalendarDayButton }}
+          />
+          {groupDateRange?.from ? (
+            <div className="sidebar-calendar-footer">
+              <button
+                type="button"
+                className="sidebar-calendar-clear"
+                onClick={() => setGroupDateRange(undefined)}
+              >
+                Limpar
+              </button>
+            </div>
+          ) : null}
+        </div>
+
         <div className="sidebar-theme-row">
           <span className="sidebar-theme-label" id="theme-switch-label">
             Modo escuro
@@ -748,8 +796,10 @@ function App() {
             <div className="empty-state">
               {groups.length === 0
                 ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
-                : search.trim() !== '' || activeTagFilters.length > 0
-                  ? 'Nenhum resultado para essa busca ou combinação de tags.'
+                : search.trim() !== '' ||
+                    activeTagFilters.length > 0 ||
+                    groupDateRange?.from
+                  ? 'Nenhum resultado para essa busca, tags ou intervalo de datas.'
                   : 'Nenhum resultado.'}
             </div>
           ) : (
