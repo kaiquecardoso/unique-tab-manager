@@ -1,0 +1,212 @@
+/* Tema claro (escuro em html[data-theme="dark"]) */
+:root {
+  color-scheme: light;
+
+  --sidebar-bg: #ffffff;
+  /* Área principal levemente aquecida para contrastar com a sidebar branca */
+  --main-bg: #f5f5f7;
+
+  --surface: #ffffff;
+  --surface-raised: #fafafa;
+  --search-bg: #ffffff;
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #424245;
+  --text-muted: #6e6e73;
+
+  /* Itens de lista (abas): menos contraste que títulos de página */
+  --text-item-title: #5c5c62;
+  --text-item-host: #9a9aa0;
+
+  --accent: #007aff;
+  --danger: #ff3b30;
+
+  --border: #d2d2d7;
+  --border-subtle: #e5e5ea;
+
+  /* Raios extras (cartões / campos no estilo iOS recente) */
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 26px;
+  --radius-xl: 34px;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* Cabeçalho de grupo (referência estilo lista Apple) */
+  --group-header-bg: #f8f9fa;
+  --group-header-border: #e9ecef;
+  --group-header-text: #495057;
+  --group-meta-text: #868e96;
+  --group-icon-muted: #868e96;
+  --group-badge-bg: #e9ecef;
+  --group-badge-text: #495057;
+
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--main-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Escuro alinhado a iOS / macOS (systemBackground, grouped, labels, separator) */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* secondarySystemGroupedBackground + systemBackground */
+  --sidebar-bg: #1c1c1e;
+  --main-bg: #111111;
+
+  /* células elevadas sobre preto; campos de busca tertiarySystemFill-like */
+  --surface: #1c1c1e;
+  --surface-raised: #2c2c2e;
+  --search-bg: #2c2c2e;
+
+  /* label / secondaryLabel / tertiaryLabel */
+  --text-primary: #ffffff;
+  --text-secondary: #ebebf5;
+  --text-muted: #8e8e93;
+
+  --text-item-title: #ebebf5;
+  --text-item-host: #8e8e93;
+
+  --accent: #0a84ff;
+  --danger: #ff453a;
+
+  /* separator opaco (~ 0,36–0,65 sobre base escura) */
+  --border: rgba(84, 84, 88, 0.55);
+  --border-subtle: rgba(84, 84, 88, 0.32);
+
+  /* iOS escuro: pouca sombra; contorno suave */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-card:
+    0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    0 6px 20px rgba(0, 0, 0, 0.38);
+
+  --group-header-bg: #2c2c2e;
+  --group-header-border: rgba(84, 84, 88, 0.32);
+  --group-header-text: #ffffff;
+  --group-meta-text: #8e8e93;
+  --group-icon-muted: #98989d;
+  /* tertiarySystemFill */
+  --group-badge-bg: rgba(118, 118, 128, 0.24);
+  --group-badge-text: #ebebf5;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/*
+ * Transição ao alternar claro/escuro (~280ms, curva padrão tipo Apple).
+ * Botões com hover rápido ficam de fora — ver .btn / .group-tool-btn no App.css.
+ */
+body,
+#root,
+.shell,
+.sidebar,
+.main,
+.stat-card,
+.sidebar-theme-row,
+.sidebar-hint,
+.sidebar-theme-label,
+.search-wrap,
+.search-input,
+.brand-title,
+.brand-sub,
+.main-title,
+.main-subtitle,
+.stat-value,
+.stat-label,
+.group-card,
+.group-header,
+.group-header-lead,
+.group-header-meta,
+.group-date,
+.group-badge,
+.group-body,
+.empty-state,
+.tab-row-main,
+.tab-title,
+.tab-host,
+.tab-added,
+.tab-favicon,
+.tab-subline-sep,
+.chevron,
+.group-folder-icon,
+.app-logo,
+.loading-text,
+.modal-title,
+.modal-body {
+  transition-property: background-color, color, border-color, box-shadow, fill,
+    stroke;
+  transition-duration: 0.28s;
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  #root,
+  .shell,
+  .sidebar,
+  .main,
+  .stat-card,
+  .sidebar-theme-row,
+  .sidebar-hint,
+  .sidebar-theme-label,
+  .search-wrap,
+  .search-input,
+  .brand-title,
+  .brand-sub,
+  .main-title,
+  .main-subtitle,
+  .stat-value,
+  .stat-label,
+  .group-card,
+  .group-header,
+  .group-header-lead,
+  .group-header-meta,
+  .group-date,
+  .group-badge,
+  .group-body,
+  .empty-state,
+  .tab-row-main,
+  .tab-title,
+  .tab-host,
+  .tab-added,
+  .tab-favicon,
+  .tab-subline-sep,
+  .chevron,
+  .group-folder-icon,
+  .app-logo,
+  .loading-text,
+  .modal-title,
+  .modal-body {
+    transition-duration: 0.01ms;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--main-bg);
+}
+
+#root {
+  min-height: 100svh;
+}

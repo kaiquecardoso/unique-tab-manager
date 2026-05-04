@@ -1,0 +1,751 @@
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
+import type { SavedTab, TabGroup } from './types/tabs'
+import './App.css'
+
+function faviconUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname
+    return `https://www.google.com/s2/favicons?domain=${host}&sz=64`
+  } catch {
+    return 'https://www.google.com/s2/favicons?domain=example.com&sz=64'
+  }
+}
+
+function formatShortDate(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(d)
+}
+
+/** Rótulo principal do grupo (só data, sem horário — hora fica na meta à direita). */
+function formatGroupPrimary(d: Date): string {
+  return formatShortDate(d)
+}
+
+function formatTimeOnly(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d)
+}
+
+function formatRelativeAgo(saved: Date): string {
+  const sec = Math.round((Date.now() - saved.getTime()) / 1000)
+  if (sec < 45) return 'agora'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} min atrás`
+  const h = Math.floor(min / 60)
+  if (h < 48) return `${h} h atrás`
+  const days = Math.floor(h / 24)
+  return `${days} d atrás`
+}
+
+function formatGroupMetaLine(d: Date): string {
+  return `${formatShortDate(d)} | ${formatTimeOnly(d)} | ${formatRelativeAgo(d)}`
+}
+
+function formatTabAddedAt(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(iso))
+  } catch {
+    return ''
+  }
+}
+
+function sortGroupsList(list: TabGroup[]): TabGroup[] {
+  return [...list].sort((a, b) => {
+    const ap = a.pinned ? 1 : 0
+    const bp = b.pinned ? 1 : 0
+    if (bp !== ap) return bp - ap
+    return new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+  })
+}
+
+function IconLogo() {
+  return (
+    <svg
+      className="app-logo"
+      width="36"
+      height="36"
+      viewBox="0 0 36 36"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <rect width="36" height="36" rx="14" fill="var(--accent)" />
+      <path
+        d="M11 20 L18 13 L25 20"
+        stroke="white"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconSearch() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15ZM21 21l-4.35-4.35"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`chevron ${open ? 'chevron--open' : ''}`}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M9 6l6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconFolder() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 7a2 2 0 0 1 2-2h4.2l1.6 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconClock() {
+  return (
+    <svg
+      className="group-meta-clock"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M12 7v5l3 2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconPin({ pinned }: { pinned: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 2h6v7l3 3v1H6v-1l3-3V2z M10 13v9h4v-9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {!pinned ? (
+        <path
+          d="M3 21L20 4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      ) : null}
+    </svg>
+  )
+}
+
+function IconPencil() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20h9M4.5 15.5L15 5l4 4L8.5 19.5H4v-4z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconTrash() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function filterGroups(groups: TabGroup[], q: string): TabGroup[] {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return groups
+  return groups
+    .map((g) => {
+      const tabs = g.tabs.filter(
+        (t) =>
+          t.title.toLowerCase().includes(needle) ||
+          t.url.toLowerCase().includes(needle),
+      )
+      return { ...g, tabs }
+    })
+    .filter((g) => g.tabs.length > 0)
+}
+
+function IconClose() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M4 4l8 8M12 4l-8 8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function TabRow({
+  tab: t,
+  onRequestRemove,
+}: {
+  tab: SavedTab
+  onRequestRemove: () => void
+}) {
+  let host = ''
+  try {
+    host = new URL(t.url).hostname.replace(/^www\./, '')
+  } catch {
+    host = t.url
+  }
+
+  function openTab() {
+    void chrome.tabs.create({ url: t.url })
+  }
+
+  return (
+    <div className="tab-row">
+      <button type="button" className="tab-row-main" onClick={openTab}>
+        <img
+          className="tab-favicon"
+          src={faviconUrl(t.url)}
+          alt=""
+          width={32}
+          height={32}
+          loading="lazy"
+        />
+        <div className="tab-text">
+          <div className="tab-title">{t.title}</div>
+          <div className="tab-subline">
+            <span className="tab-host">{host}</span>
+            <span className="tab-subline-sep" aria-hidden>
+              ·
+            </span>
+            <time className="tab-added" dateTime={t.addedAt}>
+              {formatTabAddedAt(t.addedAt)}
+            </time>
+          </div>
+        </div>
+      </button>
+      <button
+        type="button"
+        className="tab-row-delete"
+        aria-label="Remover aba salva"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRequestRemove()
+        }}
+      >
+        <IconClose />
+      </button>
+    </div>
+  )
+}
+
+type ConfirmDeleteAction =
+  | { variant: 'all' }
+  | { variant: 'group'; groupId: string }
+  | { variant: 'tab'; groupId: string; tabId: string }
+
+const THEME_STORAGE_KEY = 'one-tab-manager-theme'
+
+function App() {
+  const [groups, setGroups] = useState<TabGroup[]>([])
+  const [ready, setReady] = useState(false)
+  const [search, setSearch] = useState('')
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
+    } catch {
+      return false
+    }
+  })
+  const [confirmModalMounted, setConfirmModalMounted] = useState(false)
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const confirmModalOpenRef = useRef(false)
+  const [confirmAction, setConfirmAction] =
+    useState<ConfirmDeleteAction | null>(null)
+
+  useEffect(() => {
+    confirmModalOpenRef.current = confirmModalOpen
+  }, [confirmModalOpen])
+
+  const confirmCopy = useMemo(() => {
+    switch (confirmAction?.variant) {
+      case 'all':
+        return {
+          title: 'Excluir tudo?',
+          body:
+            'Tem certeza de que deseja remover todos os grupos e abas salvas? Esta ação não pode ser desfeita.',
+          confirmLabel: 'Excluir tudo',
+        }
+      case 'group':
+        return {
+          title: 'Excluir este grupo?',
+          body:
+            'Tem certeza? Todas as abas salvas neste grupo serão removidas. Esta ação não pode ser desfeita.',
+          confirmLabel: 'Excluir grupo',
+        }
+      case 'tab':
+        return {
+          title: 'Remover esta aba?',
+          body:
+            'A aba será removida apenas da lista salva. Esta ação não pode ser desfeita.',
+          confirmLabel: 'Remover aba',
+        }
+      default:
+        return {
+          title: '',
+          body: '',
+          confirmLabel: 'Confirmar',
+        }
+    }
+  }, [confirmAction])
+
+  const persist = useCallback((next: TabGroup[]) => {
+    const sorted = sortGroupsList(next)
+    setGroups(sorted)
+    void saveGroups(sorted)
+  }, [])
+
+  useEffect(() => {
+    if (!confirmModalMounted) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [confirmModalMounted])
+
+  useEffect(() => {
+    if (!confirmModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setConfirmModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [confirmModalMounted])
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      'data-theme',
+      darkMode ? 'dark' : 'light',
+    )
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light')
+    } catch {
+      /* armazenamento indisponível (ex.: contexto restrito) */
+    }
+  }, [darkMode])
+
+  useEffect(() => {
+    void loadGroups().then((loaded) => {
+      setGroups(sortGroupsList(loaded))
+      setReady(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    const onChange = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area !== 'local' || !changes[GROUPS_STORAGE_KEY]) return
+      const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
+      if (Array.isArray(next))
+        setGroups(sortGroupsList(normalizeAllGroups(next)))
+    }
+    chrome.storage.onChanged.addListener(onChange)
+    return () => chrome.storage.onChanged.removeListener(onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!confirmModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseConfirmModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmModalMounted])
+
+  function requestCloseConfirmModal() {
+    confirmModalOpenRef.current = false
+    setConfirmModalOpen(false)
+  }
+
+  function handleConfirmModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!confirmModalOpenRef.current) {
+      setConfirmModalMounted(false)
+      setConfirmAction(null)
+    }
+  }
+
+  function openConfirmDeleteModal(action: ConfirmDeleteAction) {
+    setConfirmAction(action)
+    setConfirmModalMounted(true)
+  }
+
+  const orderedGroups = useMemo(() => sortGroupsList(groups), [groups])
+
+  const visible = useMemo(
+    () => filterGroups(orderedGroups, search),
+    [orderedGroups, search],
+  )
+
+  const totalTabs = useMemo(
+    () => groups.reduce((n, g) => n + g.tabs.length, 0),
+    [groups],
+  )
+
+  function toggleExpanded(id: string) {
+    const next = groups.map((g) =>
+      g.id === id ? { ...g, expanded: !g.expanded } : g,
+    )
+    persist(next)
+  }
+
+  function executeConfirmDelete() {
+    const a = confirmAction
+    if (!a) return
+    if (a.variant === 'all') {
+      persist([])
+    } else if (a.variant === 'group') {
+      persist(groups.filter((g) => g.id !== a.groupId))
+    } else {
+      const next = groups
+        .map((g) =>
+          g.id === a.groupId
+            ? { ...g, tabs: g.tabs.filter((tab) => tab.id !== a.tabId) }
+            : g,
+        )
+        .filter((g) => g.tabs.length > 0)
+      persist(next)
+    }
+    requestCloseConfirmModal()
+  }
+
+  function togglePin(groupId: string) {
+    persist(
+      groups.map((g) =>
+        g.id === groupId
+          ? { ...g, pinned: !(g.pinned === true) }
+          : g,
+      ),
+    )
+  }
+
+  function editGroupTitle(groupId: string) {
+    const g = groups.find((x) => x.id === groupId)
+    if (!g) return
+    const defaultLabel =
+      g.customTitle ?? formatGroupPrimary(new Date(g.savedAt))
+    const value = window.prompt('Nome do grupo', defaultLabel)
+    if (value === null) return
+    const trimmed = value.trim()
+    persist(
+      groups.map((gr) =>
+        gr.id === groupId
+          ? { ...gr, customTitle: trimmed || undefined }
+          : gr,
+      ),
+    )
+  }
+
+  if (!ready) {
+    return (
+      <div className="shell shell--loading">
+        <p className="loading-text">Carregando…</p>
+      </div>
+    )
+  }
+
+  return (
+    <Fragment>
+      <div className="shell">
+      <aside className="sidebar">
+        <header className="sidebar-brand">
+          <IconLogo />
+          <div>
+            <div className="brand-title">OneTab</div>
+            <div className="brand-sub">GERENCIADOR DE ABAS</div>
+          </div>
+        </header>
+
+        <label className="search-wrap">
+          <IconSearch />
+          <input
+            className="search-input"
+            type="search"
+            placeholder="Buscar abas..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+
+        <div className="stats">
+          <div className="stat-card">
+            <div className="stat-value">{groups.length}</div>
+            <div className="stat-label">grupos</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{totalTabs}</div>
+            <div className="stat-label">abas</div>
+          </div>
+        </div>
+
+        <div className="sidebar-theme-row">
+          <span className="sidebar-theme-label" id="theme-switch-label">
+            Modo escuro
+          </span>
+          <button
+            type="button"
+            className="theme-switch"
+            role="switch"
+            aria-checked={darkMode}
+            aria-labelledby="theme-switch-label"
+            onClick={() => setDarkMode((v) => !v)}
+          >
+            <span className="theme-switch__knob" aria-hidden />
+          </button>
+        </div>
+
+        <div className="sidebar-actions">
+          <button
+            type="button"
+            className="btn btn-outline btn-danger"
+            onClick={() => openConfirmDeleteModal({ variant: 'all' })}
+            disabled={groups.length === 0}
+          >
+            <IconTrash />
+            Excluir tudo
+          </button>
+        </div>
+
+        <p className="sidebar-hint">
+          Clique no ícone da extensão para salvar a aba atual. Botão direito no
+          ícone → <strong>Abrir lista de abas salvas</strong>.
+        </p>
+      </aside>
+
+      <main className="main">
+        <header className="main-header">
+          <h1 className="main-title">Abas salvas</h1>
+          <p className="main-subtitle">
+            Gerencie suas abas do navegador em um só lugar.
+          </p>
+        </header>
+
+        <div className="group-list">
+          {visible.length === 0 ? (
+            <div className="empty-state">
+              {groups.length === 0
+                ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
+                : 'Nenhum resultado para essa busca.'}
+            </div>
+          ) : (
+            visible.map((g) => {
+              const saved = new Date(g.savedAt)
+              return (
+                <article key={g.id} className="group-card">
+                  <div className="group-header">
+                    <button
+                      type="button"
+                      className="group-header-lead"
+                      id={`group-header-${g.id}`}
+                      onClick={() => toggleExpanded(g.id)}
+                      aria-expanded={g.expanded}
+                      aria-controls={`group-panel-${g.id}`}
+                    >
+                      <IconChevron open={g.expanded} />
+                      <span className="group-folder-icon" aria-hidden>
+                        <IconFolder />
+                      </span>
+                      <span className="group-date">
+                        {g.customTitle ?? formatGroupPrimary(saved)}
+                      </span>
+                    </button>
+                    <div className="group-header-meta">
+                      <IconClock />
+                      <span>{formatGroupMetaLine(saved)}</span>
+                    </div>
+                    <span className="group-badge">{g.tabs.length}</span>
+                    <div className="group-header-tools">
+                      <button
+                        type="button"
+                        className="group-tool-btn"
+                        aria-label={
+                          g.pinned ? 'Desfixar grupo' : 'Fixar grupo'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          togglePin(g.id)
+                        }}
+                      >
+                        <IconPin pinned={g.pinned === true} />
+                      </button>
+                      <button
+                        type="button"
+                        className="group-tool-btn"
+                        aria-label="Editar nome do grupo"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          editGroupTitle(g.id)
+                        }}
+                      >
+                        <IconPencil />
+                      </button>
+                      <button
+                        type="button"
+                        className="group-tool-btn group-tool-btn--danger"
+                        aria-label="Excluir grupo"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openConfirmDeleteModal({
+                            variant: 'group',
+                            groupId: g.id,
+                          })
+                        }}
+                      >
+                        <IconTrash />
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className={`group-accordion${g.expanded ? ' group-accordion--open' : ''}`}
+                    id={`group-panel-${g.id}`}
+                    role="region"
+                    aria-labelledby={`group-header-${g.id}`}
+                  >
+                    <div
+                      className="group-accordion-inner"
+                      inert={!g.expanded}
+                    >
+                      <div className="group-body">
+                        {g.tabs.map((t) => (
+                          <TabRow
+                            key={t.id}
+                            tab={t}
+                            onRequestRemove={() =>
+                              openConfirmDeleteModal({
+                                variant: 'tab',
+                                groupId: g.id,
+                                tabId: t.id,
+                              })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              )
+            })
+          )}
+        </div>
+      </main>
+    </div>
+
+      {confirmModalMounted && confirmAction
+        ? createPortal(
+            <div
+              className={`modal-backdrop${confirmModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={requestCloseConfirmModal}
+              onTransitionEnd={handleConfirmModalBackdropTransitionEnd}
+            >
+              <div
+                className="modal-dialog"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="confirm-modal-title"
+                aria-describedby="confirm-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="confirm-modal-title" className="modal-title">
+                  {confirmCopy.title}
+                </h2>
+                <p id="confirm-modal-desc" className="modal-body">
+                  {confirmCopy.body}
+                </p>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={requestCloseConfirmModal}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger-solid modal-btn"
+                    onClick={executeConfirmDelete}
+                  >
+                    {confirmCopy.confirmLabel}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </Fragment>
+  )
+}
+
+export default App
