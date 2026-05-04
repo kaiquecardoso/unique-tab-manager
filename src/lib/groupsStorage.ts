@@ -1,11 +1,17 @@
 import type { SavedTab, TabGroup } from '../types/tabs'
+import { normalizeTagsArray } from './tags'
 
 export const GROUPS_STORAGE_KEY = 'oneTabGroupsV1'
 
 function normalizeTab(raw: SavedTab, groupSavedAt: string): SavedTab {
   const fallback = groupSavedAt || new Date().toISOString()
+  const tags =
+    raw && typeof raw === 'object' && 'tags' in raw
+      ? normalizeTagsArray((raw as SavedTab).tags)
+      : []
   return {
     ...raw,
+    tags,
     addedAt:
       typeof raw.addedAt === 'string' && raw.addedAt
         ? raw.addedAt

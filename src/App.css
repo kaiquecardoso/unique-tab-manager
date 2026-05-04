@@ -260,6 +260,102 @@ html[data-theme='dark'] .btn-danger:hover:not(:disabled) {
   margin-bottom: 28px;
 }
 
+.tag-filter-bar {
+  margin: -8px 0 22px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.tag-filter-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tag-filter-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.tag-filter-clear {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  margin: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.tag-filter-clear:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.tag-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.tag-filter-pill:hover {
+  border-color: color-mix(in srgb, var(--border) 65%, var(--accent));
+}
+
+.tag-filter-pill--active {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  color: var(--accent);
+}
+
+.tag-filter-pill-count {
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-filter-hint {
+  margin: 10px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.tag-filter-hint strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .main-title {
   margin: 0 0 8px;
   font-size: 1.85rem;
@@ -457,12 +553,94 @@ html[data-theme='dark'] .group-tool-btn:hover {
 
 .tab-row {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px 4px 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 4px 6px 8px 4px;
   border-radius: var(--radius-md);
   transition: background 0.12s ease;
   width: 100%;
+}
+
+.tab-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tab-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 0 54px;
+}
+
+.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px 6px 3px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.25;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.tab-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tab-chip-remove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.tab-tag-input {
+  flex: 0 1 148px;
+  width: 148px;
+  min-width: 72px;
+  max-width: min(220px, 28vw);
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 88%, var(--main-bg));
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-item-title);
+  flex-shrink: 1;
+}
+
+.tab-tag-input::placeholder {
+  color: var(--text-item-host);
+  opacity: 0.85;
+}
+
+.tab-tag-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  border-style: solid;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .shell--loading {

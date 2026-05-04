@@ -23,6 +23,7 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
     title: tab.title?.trim() || 'Sem título',
     url: tab.url,
     addedAt: now,
+    tags: [],
   }
 
   const groups = await loadGroups()

@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
+import { mergeNewTags } from './lib/tags'
 import type { SavedTab, TabGroup } from './types/tabs'
 import './App.css'
 
@@ -210,16 +211,27 @@ function IconTrash() {
   )
 }
 
-function filterGroups(groups: TabGroup[], q: string): TabGroup[] {
+function filterGroups(
+  groups: TabGroup[],
+  q: string,
+  activeTags: Set<string>,
+): TabGroup[] {
   const needle = q.trim().toLowerCase()
-  if (!needle) return groups
+  const tagFiltering = activeTags.size > 0
+
   return groups
     .map((g) => {
-      const tabs = g.tabs.filter(
-        (t) =>
+      const tabs = g.tabs.filter((t) => {
+        if (tagFiltering && !t.tags.some((tag) => activeTags.has(tag))) {
+          return false
+        }
+        if (!needle) return true
+        return (
           t.title.toLowerCase().includes(needle) ||
-          t.url.toLowerCase().includes(needle),
-      )
+          t.url.toLowerCase().includes(needle) ||
+          t.tags.some((tag) => tag.includes(needle))
+        )
+      })
       return { ...g, tabs }
     })
     .filter((g) => g.tabs.length > 0)
@@ -241,11 +253,22 @@ function IconClose() {
 function TabRow({
   tab: t,
   onRequestRemove,
+  onSetTags,
 }: {
   tab: SavedTab
   onRequestRemove: () => void
+  onSetTags: (tags: string[]) => void
 }) {
-  let host = ''
+  const [tagDraft, setTagDraft] = useState('')
+
+  function commitTagDraft() {
+    const raw = tagDraft
+    setTagDraft('')
+    const next = mergeNewTags(t.tags, raw)
+    if (JSON.stringify(next) !== JSON.stringify(t.tags)) onSetTags(next)
+  }
+
+  let host: string
   try {
     host = new URL(t.url).hostname.replace(/^www\./, '')
   } catch {
@@ -258,39 +281,84 @@ function TabRow({
 
   return (
     <div className="tab-row">
-      <button type="button" className="tab-row-main" onClick={openTab}>
-        <img
-          className="tab-favicon"
-          src={faviconUrl(t.url)}
-          alt=""
-          width={32}
-          height={32}
-          loading="lazy"
-        />
-        <div className="tab-text">
-          <div className="tab-title">{t.title}</div>
-          <div className="tab-subline">
-            <span className="tab-host">{host}</span>
-            <span className="tab-subline-sep" aria-hidden>
-              ·
-            </span>
-            <time className="tab-added" dateTime={t.addedAt}>
-              {formatTabAddedAt(t.addedAt)}
-            </time>
+      <div className="tab-row-top">
+        <button
+          type="button"
+          className="tab-row-main"
+          onClick={openTab}
+        >
+          <img
+            className="tab-favicon"
+            src={faviconUrl(t.url)}
+            alt=""
+            width={32}
+            height={32}
+            loading="lazy"
+          />
+          <div className="tab-text">
+            <div className="tab-title">{t.title}</div>
+            <div className="tab-subline">
+              <span className="tab-host">{host}</span>
+              <span className="tab-subline-sep" aria-hidden>
+                ·
+              </span>
+              <time className="tab-added" dateTime={t.addedAt}>
+                {formatTabAddedAt(t.addedAt)}
+              </time>
+            </div>
           </div>
+        </button>
+        <input
+          className="tab-tag-input"
+          type="text"
+          value={tagDraft}
+          onChange={(e) => setTagDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitTagDraft()
+            }
+          }}
+          onBlur={() => {
+            commitTagDraft()
+          }}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="Nova tag…"
+          aria-label="Adicionar tags (Enter ou vírgula)"
+          maxLength={64}
+        />
+        <button
+          type="button"
+          className="tab-row-delete"
+          aria-label="Remover aba salva"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRequestRemove()
+          }}
+        >
+          <IconClose />
+        </button>
+      </div>
+      {t.tags.length > 0 ? (
+        <div className="tab-row-tags">
+          {t.tags.map((tag) => (
+            <span key={tag} className="tab-chip">
+              {tag}
+              <button
+                type="button"
+                className="tab-chip-remove"
+                aria-label={`Remover tag ${tag}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSetTags(t.tags.filter((x) => x !== tag))
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
-      </button>
-      <button
-        type="button"
-        className="tab-row-delete"
-        aria-label="Remover aba salva"
-        onClick={(e) => {
-          e.stopPropagation()
-          onRequestRemove()
-        }}
-      >
-        <IconClose />
-      </button>
+      ) : null}
     </div>
   )
 }
@@ -306,6 +374,7 @@ function App() {
   const [groups, setGroups] = useState<TabGroup[]>([])
   const [ready, setReady] = useState(false)
   const [search, setSearch] = useState('')
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([])
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
@@ -442,15 +511,49 @@ function App() {
 
   const orderedGroups = useMemo(() => sortGroupsList(groups), [groups])
 
+  const activeTagSet = useMemo(
+    () => new Set(activeTagFilters),
+    [activeTagFilters],
+  )
+
+  const tagIndex = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const g of groups) {
+      for (const t of g.tabs) {
+        for (const tag of t.tags) {
+          map.set(tag, (map.get(tag) ?? 0) + 1)
+        }
+      }
+    }
+    return [...map.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => a.tag.localeCompare(b.tag, 'pt-BR'))
+  }, [groups])
+
   const visible = useMemo(
-    () => filterGroups(orderedGroups, search),
-    [orderedGroups, search],
+    () => filterGroups(orderedGroups, search, activeTagSet),
+    [orderedGroups, search, activeTagSet],
   )
 
   const totalTabs = useMemo(
     () => groups.reduce((n, g) => n + g.tabs.length, 0),
     [groups],
   )
+
+  function setTabTags(groupId: string, tabId: string, tags: string[]) {
+    persist(
+      groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              tabs: g.tabs.map((tab) =>
+                tab.id === tabId ? { ...tab, tags } : tab,
+              ),
+            },
+      ),
+    )
+  }
 
   function toggleExpanded(id: string) {
     const next = groups.map((g) =>
@@ -531,7 +634,7 @@ function App() {
           <input
             className="search-input"
             type="search"
-            placeholder="Buscar abas..."
+            placeholder="Buscar por título, URL ou tag…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoComplete="off"
@@ -591,12 +694,63 @@ function App() {
           </p>
         </header>
 
+        {tagIndex.length > 0 ? (
+          <section
+            className="tag-filter-bar"
+            aria-label="Filtrar listagem por tags"
+          >
+            <div className="tag-filter-bar-head">
+              <span className="tag-filter-title">Filtrar por tag</span>
+              {activeTagFilters.length > 0 ? (
+                <button
+                  type="button"
+                  className="tag-filter-clear"
+                  onClick={() => setActiveTagFilters([])}
+                >
+                  Limpar filtros
+                </button>
+              ) : null}
+            </div>
+            <div className="tag-filter-pills">
+              {tagIndex.map(({ tag, count }) => {
+                const on = activeTagFilters.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`tag-filter-pill${on ? ' tag-filter-pill--active' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => {
+                      setActiveTagFilters((prev) =>
+                        prev.includes(tag)
+                          ? prev.filter((x) => x !== tag)
+                          : [...prev, tag],
+                      )
+                    }}
+                  >
+                    {tag}
+                    <span className="tag-filter-pill-count">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {activeTagFilters.length > 1 ? (
+              <p className="tag-filter-hint">
+                Mostrando abas que tenham{' '}
+                <strong>qualquer uma</strong> das tags selecionadas.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
         <div className="group-list">
           {visible.length === 0 ? (
             <div className="empty-state">
               {groups.length === 0
                 ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
-                : 'Nenhum resultado para essa busca.'}
+                : search.trim() !== '' || activeTagFilters.length > 0
+                  ? 'Nenhum resultado para essa busca ou combinação de tags.'
+                  : 'Nenhum resultado.'}
             </div>
           ) : (
             visible.map((g) => {
@@ -688,6 +842,7 @@ function App() {
                                 tabId: t.id,
                               })
                             }
+                            onSetTags={(tags) => setTabTags(g.id, t.id, tags)}
                           />
                         ))}
                       </div>

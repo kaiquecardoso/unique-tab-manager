@@ -4,6 +4,8 @@ export type SavedTab = {
   url: string
   /** ISO 8601 — momento em que a aba foi salva na extensão. */
   addedAt: string
+  /** Tags normalizadas (minúsculas); filtro e busca usam os mesmos valores. */
+  tags: string[]
 }
 
 export type TabGroup = {
