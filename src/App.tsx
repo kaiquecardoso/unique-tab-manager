@@ -259,6 +259,8 @@ function IconClose() {
   )
 }
 
+const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
+
 function TabRow({
   tab: t,
   onRequestRemove,
@@ -287,6 +289,16 @@ function TabRow({
   function openTab() {
     void chrome.tabs.create({ url: t.url })
   }
+
+  const tagInputSize = Math.min(
+    44,
+    Math.max(
+      8,
+      tagDraft.length > 0
+        ? tagDraft.length + 1
+        : TAG_INPUT_PLACEHOLDER.length,
+    ),
+  )
 
   return (
     <div className="tab-row">
@@ -317,39 +329,7 @@ function TabRow({
             </div>
           </div>
         </button>
-        <input
-          className="tab-tag-input"
-          type="text"
-          value={tagDraft}
-          onChange={(e) => setTagDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              commitTagDraft()
-            }
-          }}
-          onBlur={() => {
-            commitTagDraft()
-          }}
-          onClick={(e) => e.stopPropagation()}
-          placeholder="Nova tag…"
-          aria-label="Adicionar tags (Enter ou vírgula)"
-          maxLength={64}
-        />
-        <button
-          type="button"
-          className="tab-row-delete"
-          aria-label="Remover aba salva"
-          onClick={(e) => {
-            e.stopPropagation()
-            onRequestRemove()
-          }}
-        >
-          <IconClose />
-        </button>
-      </div>
-      {t.tags.length > 0 ? (
-        <div className="tab-row-tags">
+        <div className="tab-row-tags-field">
           {t.tags.map((tag) => (
             <span key={tag} className="tab-chip">
               {tag}
@@ -366,8 +346,39 @@ function TabRow({
               </button>
             </span>
           ))}
+          <input
+            className="tab-tag-input"
+            type="text"
+            value={tagDraft}
+            size={tagInputSize}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitTagDraft()
+              }
+            }}
+            onBlur={() => {
+              commitTagDraft()
+            }}
+            onClick={(e) => e.stopPropagation()}
+            placeholder={TAG_INPUT_PLACEHOLDER}
+            aria-label="Adicionar tags (Enter ou vírgula)"
+            maxLength={64}
+          />
         </div>
-      ) : null}
+        <button
+          type="button"
+          className="tab-row-delete"
+          aria-label="Remover aba salva"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRequestRemove()
+          }}
+        >
+          <IconClose />
+        </button>
+      </div>
     </div>
   )
 }

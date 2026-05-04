@@ -702,12 +702,13 @@ html[data-theme='dark'] .group-tool-btn:hover {
   min-width: 0;
 }
 
-.tab-row-tags {
+.tab-row-tags-field {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px 0 54px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .tab-chip {
@@ -715,7 +716,8 @@ html[data-theme='dark'] .group-tool-btn:hover {
   align-items: center;
   gap: 2px;
   max-width: 100%;
-  padding: 3px 6px 3px 9px;
+  min-height: 28px;
+  padding: 2px 6px 2px 9px;
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 500;
@@ -748,19 +750,20 @@ html[data-theme='dark'] .group-tool-btn:hover {
 }
 
 .tab-tag-input {
-  flex: 0 1 148px;
-  width: 148px;
-  min-width: 72px;
-  max-width: min(220px, 28vw);
-  height: 32px;
-  padding: 0 10px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  max-width: min(16rem, 100%);
+  height: 28px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px dashed var(--border-subtle);
   background: color-mix(in srgb, var(--surface) 88%, var(--main-bg));
   font: inherit;
   font-size: 0.75rem;
   color: var(--text-item-title);
-  flex-shrink: 1;
+  box-sizing: content-box;
+  field-sizing: content;
 }
 
 .tab-tag-input::placeholder {
