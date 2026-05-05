@@ -10,37 +10,30 @@ type ToastMessage = {
   isError?: boolean
   isLoading?: boolean
   url?: string
+  title?: string
 }
 
 const TOAST_ID = 'one-tab-manager-toast'
+let hoveredAnchor: HTMLAnchorElement | null = null
 
 function getAnchorFromTarget(target: EventTarget | null): HTMLAnchorElement | null {
   if (!(target instanceof Element)) return null
   return target.closest('a[href]')
 }
 
-function isMacPlatform(): boolean {
-  return navigator.platform.toLowerCase().includes('mac')
+function normalizeToastTitle(title: string | undefined): string {
+  return title?.replace(/\s+/g, ' ').trim() ?? ''
 }
 
-function isShortcutPressed(event: MouseEvent): boolean {
-  if (!event.shiftKey) return false
-  return isMacPlatform() ? event.metaKey : event.ctrlKey
-}
-
-function getDomainFromUrl(url: string | undefined): string {
+function getFaviconUrl(url: string | undefined): string {
   if (!url) return ''
 
   try {
-    return new URL(url).hostname.replace(/^www\./, '')
+    const origin = new URL(url).origin
+    return `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(origin)}`
   } catch {
     return ''
   }
-}
-
-function getFaviconUrl(url: string): string {
-  const origin = new URL(url).origin
-  return `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(origin)}`
 }
 
 function showToast(
@@ -48,11 +41,13 @@ function showToast(
   isError = false,
   url?: string,
   isLoading = false,
+  tabTitle?: string,
 ): void {
   const existing = document.getElementById(TOAST_ID)
   if (existing) existing.remove()
   const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
-  const domain = getDomainFromUrl(url)
+  const metaTitle = normalizeToastTitle(tabTitle)
+  const faviconUrl = getFaviconUrl(url)
 
   const host = document.createElement('div')
   host.id = TOAST_ID
@@ -89,7 +84,7 @@ function showToast(
     ? '0 16px 40px rgba(0, 0, 0, 0.35)'
     : '0 16px 40px rgba(15, 23, 42, 0.14)'
   toast.style.display = 'grid'
-  toast.style.gap = domain ? '5px' : '0'
+  toast.style.gap = metaTitle ? '5px' : '0'
   toast.style.opacity = '0'
   toast.style.transform = 'translateY(-10px) scale(0.98)'
   toast.style.transition =
@@ -126,7 +121,7 @@ function showToast(
   shadow.appendChild(style)
   toast.appendChild(title)
 
-  if (domain && url) {
+  if (metaTitle) {
     const meta = document.createElement('div')
     meta.style.display = 'flex'
     meta.style.alignItems = 'center'
@@ -137,23 +132,26 @@ function showToast(
     meta.style.fontWeight = '400'
     meta.style.lineHeight = '1.2'
 
-    const favicon = document.createElement('img')
-    favicon.src = getFaviconUrl(url)
-    favicon.alt = ''
-    favicon.width = 14
-    favicon.height = 14
-    favicon.style.width = '14px'
-    favicon.style.height = '14px'
-    favicon.style.borderRadius = '3px'
-    favicon.style.flex = '0 0 auto'
+    if (faviconUrl) {
+      const favicon = document.createElement('img')
+      favicon.src = faviconUrl
+      favicon.alt = ''
+      favicon.width = 14
+      favicon.height = 14
+      favicon.style.width = '14px'
+      favicon.style.height = '14px'
+      favicon.style.borderRadius = '3px'
+      favicon.style.flex = '0 0 auto'
+      meta.appendChild(favicon)
+    }
 
-    const domainText = document.createElement('span')
-    domainText.textContent = domain
-    domainText.style.overflow = 'hidden'
-    domainText.style.textOverflow = 'ellipsis'
-    domainText.style.whiteSpace = 'nowrap'
+    const tabTitleText = document.createElement('span')
+    tabTitleText.textContent = metaTitle
+    tabTitleText.style.overflow = 'hidden'
+    tabTitleText.style.textOverflow = 'ellipsis'
+    tabTitleText.style.whiteSpace = 'nowrap'
 
-    meta.append(favicon, domainText)
+    meta.appendChild(tabTitleText)
     toast.appendChild(meta)
   }
 
@@ -174,14 +172,49 @@ function showToast(
 }
 
 function sendSaveMessage(message: SaveLinkMessage): void {
-  chrome.runtime.sendMessage(message, (response?: { ok?: boolean }) => {
+  chrome.runtime.sendMessage(message, (response?: { ok?: boolean; title?: string }) => {
     if (chrome.runtime.lastError || !response?.ok) {
-      showToast('Nao foi possivel salvar o link', true, message.url)
+      showToast('Nao foi possivel salvar o link', true, message.url, false, message.title)
       return
     }
 
-    showToast('Link salvo no OneTab', false, message.url)
+    showToast('Link salvo no OneTab', false, message.url, false, response.title ?? message.title)
   })
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+
+  return (
+    target.isContentEditable ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  )
+}
+
+function isSaveShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase()
+  const isShiftS =
+    event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && key === 's'
+  const isAltS =
+    event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && key === 's'
+
+  return isShiftS || isAltS
+}
+
+function saveLinkFromShortcut(anchor: HTMLAnchorElement): void {
+  const href = anchor.href
+  if (!href) return
+
+  const message: SaveLinkMessage = {
+    type: 'save-link',
+    url: href,
+    title: document.title.trim() || undefined,
+  }
+
+  showToast('Salvando link', false, href, true, message.title)
+  sendSaveMessage(message)
 }
 
 chrome.runtime.onMessage.addListener((message: ToastMessage) => {
@@ -191,45 +224,51 @@ chrome.runtime.onMessage.addListener((message: ToastMessage) => {
     Boolean(message.isError),
     message.url,
     Boolean(message.isLoading),
+    message.title,
   )
 })
 
 document.addEventListener(
-  'click',
+  'pointerover',
   (event) => {
-    if (event.button !== 0) return
-    if (!isShortcutPressed(event)) return
-
     const anchor = getAnchorFromTarget(event.target)
     if (!anchor) return
 
-    const href = anchor.href
-    if (!href) return
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    const message: SaveLinkMessage = {
-      type: 'save-link',
-      url: href,
-      title: document.title.trim() || undefined,
-    }
-
-    showToast('Salvando link', false, href, true)
-    sendSaveMessage(message)
+    hoveredAnchor = anchor
   },
   { capture: true },
 )
 
 document.addEventListener(
-  'contextmenu',
+  'mousemove',
   (event) => {
-    if (!isShortcutPressed(event)) return
     const anchor = getAnchorFromTarget(event.target)
-    if (!anchor) return
+    if (anchor) hoveredAnchor = anchor
+  },
+  { capture: true },
+)
+
+document.addEventListener(
+  'pointerout',
+  (event) => {
+    if (!hoveredAnchor) return
+    if (event.relatedTarget instanceof Node && hoveredAnchor.contains(event.relatedTarget)) return
+
+    hoveredAnchor = null
+  },
+  { capture: true },
+)
+
+window.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.repeat) return
+    if (!isSaveShortcut(event)) return
+    if (isEditableTarget(event.target)) return
+    if (!hoveredAnchor) return
 
     event.preventDefault()
-    event.stopPropagation()
+    saveLinkFromShortcut(hoveredAnchor)
   },
   { capture: true },
 )

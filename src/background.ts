@@ -153,8 +153,8 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
   await chrome.runtime.openOptionsPage()
 }
 
-async function saveLinkToStorage(url: string, title?: string): Promise<void> {
-  if (!url || isRestrictedUrl(url)) return
+async function saveLinkToStorage(url: string, title?: string): Promise<string> {
+  if (!url || isRestrictedUrl(url)) return ''
 
   const linkedPageTitle = await resolveLinkedPageTitle(url)
   const tabTitle = normalizeTitle(linkedPageTitle) || normalizeTitle(title) || url
@@ -195,6 +195,7 @@ async function saveLinkToStorage(url: string, title?: string): Promise<void> {
   }
 
   await saveGroups(nextGroups)
+  return tabTitle
 }
 
 async function showToastByScript(
@@ -203,6 +204,7 @@ async function showToastByScript(
   isError = false,
   url?: string,
   isLoading = false,
+  title?: string,
 ): Promise<void> {
   await chrome.scripting.executeScript({
     target: { tabId },
@@ -211,20 +213,13 @@ async function showToastByScript(
       toastIsError: boolean,
       toastUrl?: string,
       toastIsLoading = false,
+      toastTitle?: string,
     ) => {
       const toastId = 'one-tab-manager-toast'
       const existing = document.getElementById(toastId)
       if (existing) existing.remove()
       const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
-      const domain = (() => {
-        if (!toastUrl) return ''
-
-        try {
-          return new URL(toastUrl).hostname.replace(/^www\./, '')
-        } catch {
-          return ''
-        }
-      })()
+      const metaTitle = toastTitle?.replace(/\s+/g, ' ').trim() ?? ''
       const faviconUrl = (() => {
         if (!toastUrl) return ''
 
@@ -271,7 +266,7 @@ async function showToastByScript(
         ? '0 16px 40px rgba(0, 0, 0, 0.35)'
         : '0 16px 40px rgba(15, 23, 42, 0.14)'
       toast.style.display = 'grid'
-      toast.style.gap = domain ? '5px' : '0'
+      toast.style.gap = metaTitle ? '5px' : '0'
       toast.style.opacity = '0'
       toast.style.transform = 'translateY(-10px) scale(0.98)'
       toast.style.transition =
@@ -308,7 +303,7 @@ async function showToastByScript(
       shadow.appendChild(style)
       toast.appendChild(title)
 
-      if (domain && faviconUrl) {
+      if (metaTitle) {
         const meta = document.createElement('div')
         meta.style.display = 'flex'
         meta.style.alignItems = 'center'
@@ -319,23 +314,26 @@ async function showToastByScript(
         meta.style.fontWeight = '400'
         meta.style.lineHeight = '1.2'
 
-        const favicon = document.createElement('img')
-        favicon.src = faviconUrl
-        favicon.alt = ''
-        favicon.width = 14
-        favicon.height = 14
-        favicon.style.width = '14px'
-        favicon.style.height = '14px'
-        favicon.style.borderRadius = '3px'
-        favicon.style.flex = '0 0 auto'
+        if (faviconUrl) {
+          const favicon = document.createElement('img')
+          favicon.src = faviconUrl
+          favicon.alt = ''
+          favicon.width = 14
+          favicon.height = 14
+          favicon.style.width = '14px'
+          favicon.style.height = '14px'
+          favicon.style.borderRadius = '3px'
+          favicon.style.flex = '0 0 auto'
+          meta.appendChild(favicon)
+        }
 
-        const domainText = document.createElement('span')
-        domainText.textContent = domain
-        domainText.style.overflow = 'hidden'
-        domainText.style.textOverflow = 'ellipsis'
-        domainText.style.whiteSpace = 'nowrap'
+        const tabTitleText = document.createElement('span')
+        tabTitleText.textContent = metaTitle
+        tabTitleText.style.overflow = 'hidden'
+        tabTitleText.style.textOverflow = 'ellipsis'
+        tabTitleText.style.whiteSpace = 'nowrap'
 
-        meta.append(favicon, domainText)
+        meta.appendChild(tabTitleText)
         toast.appendChild(meta)
       }
 
@@ -355,7 +353,7 @@ async function showToastByScript(
         }, 1800)
       }
     },
-    args: [message, isError, url, isLoading],
+    args: [message, isError, url, isLoading, title],
   })
 }
 
@@ -365,6 +363,7 @@ async function notifyTabWithToast(
   isError = false,
   url?: string,
   isLoading = false,
+  title?: string,
 ): Promise<void> {
   try {
     await chrome.tabs.sendMessage(tabId, {
@@ -373,6 +372,7 @@ async function notifyTabWithToast(
       isError,
       url,
       isLoading,
+      title,
     })
     return
   } catch {
@@ -380,7 +380,7 @@ async function notifyTabWithToast(
   }
 
   try {
-    await showToastByScript(tabId, message, isError, url, isLoading)
+    await showToastByScript(tabId, message, isError, url, isLoading, title)
   } catch {
     // Se for uma pagina restrita, apenas ignora o toast.
   }
@@ -424,11 +424,25 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     void (async () => {
       try {
         if (typeof tab?.id === 'number') {
-          await notifyTabWithToast(tab.id, 'Salvando link', false, info.linkUrl, true)
+          await notifyTabWithToast(
+            tab.id,
+            'Salvando link',
+            false,
+            info.linkUrl,
+            true,
+            maybeTabTitle,
+          )
         }
-        await saveLinkToStorage(info.linkUrl!, maybeTabTitle)
+        const savedTitle = await saveLinkToStorage(info.linkUrl!, maybeTabTitle)
         if (typeof tab?.id === 'number') {
-          await notifyTabWithToast(tab.id, 'Link salvo no OneTab', false, info.linkUrl)
+          await notifyTabWithToast(
+            tab.id,
+            'Link salvo no OneTab',
+            false,
+            info.linkUrl,
+            false,
+            savedTitle || maybeTabTitle,
+          )
         }
       } catch {
         if (typeof tab?.id === 'number') {
@@ -437,6 +451,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             'Nao foi possivel salvar o link',
             true,
             info.linkUrl,
+            false,
+            maybeTabTitle,
           )
         }
       }
@@ -450,8 +466,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   void (async () => {
     try {
       const maybeTitle = typeof message.title === 'string' ? message.title : undefined
-      await saveLinkToStorage(message.url, maybeTitle)
-      sendResponse({ ok: true })
+      const savedTitle = await saveLinkToStorage(message.url, maybeTitle)
+      sendResponse({ ok: true, title: savedTitle || maybeTitle })
     } catch {
       sendResponse({ ok: false })
     }
