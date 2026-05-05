@@ -148,6 +148,37 @@
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+.sidebar-transfer-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.sidebar-transfer-btn {
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.sidebar-transfer-input {
+  display: none;
+}
+
+.sidebar-transfer-status {
+  grid-column: 1 / -1;
+  margin: -2px 2px 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .sidebar-day-picker.rdp-root {
   --rdp-accent-color: var(--accent);
   --rdp-accent-background-color: color-mix(in srgb, var(--accent) 16%, transparent);

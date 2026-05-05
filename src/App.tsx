@@ -526,7 +526,15 @@ type EditTabTitleAction = {
   title: string
 }
 
+type GroupsExportFile = {
+  app?: string
+  version?: number
+  exportedAt?: string
+  groups?: unknown
+}
+
 const THEME_STORAGE_KEY = 'one-tab-manager-theme'
+const GROUPS_EXPORT_VERSION = 1
 
 function App() {
   const [groups, setGroups] = useState<TabGroup[]>([])
@@ -552,9 +560,11 @@ function App() {
   const [editTitleModalOpen, setEditTitleModalOpen] = useState(false)
   const editTitleModalOpenRef = useRef(false)
   const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const importGroupsInputRef = useRef<HTMLInputElement>(null)
   const [editTitleAction, setEditTitleAction] =
     useState<EditTabTitleAction | null>(null)
   const [editTitleDraft, setEditTitleDraft] = useState('')
+  const [groupsImportStatus, setGroupsImportStatus] = useState('')
 
   useEffect(() => {
     confirmModalOpenRef.current = confirmModalOpen
@@ -805,6 +815,61 @@ function App() {
     requestCloseEditTitleModal()
   }
 
+  function exportGroups() {
+    const payload = {
+      app: 'OneTab Manager',
+      version: GROUPS_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      groups,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `onetab-manager-grupos-${stamp}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setGroupsImportStatus('Exportação gerada.')
+  }
+
+  async function importGroupsFromFile(file: File) {
+    try {
+      const parsed = JSON.parse(await file.text()) as GroupsExportFile | unknown
+      const rawGroups = Array.isArray(parsed)
+        ? parsed
+        : (parsed as GroupsExportFile | null)?.groups
+      const importedGroups = normalizeAllGroups(rawGroups).filter(
+        (g) => g.tabs.length > 0,
+      )
+
+      if (importedGroups.length === 0) {
+        setGroupsImportStatus('Nenhum grupo válido encontrado no arquivo.')
+        return
+      }
+
+      const merged = new Map(groups.map((g) => [g.id, g]))
+      for (const group of importedGroups) {
+        merged.set(group.id, group)
+      }
+      persist([...merged.values()])
+      setGroupsImportStatus(
+        `${importedGroups.length} grupo${importedGroups.length === 1 ? '' : 's'} importado${importedGroups.length === 1 ? '' : 's'}.`,
+      )
+    } catch {
+      setGroupsImportStatus('Não foi possível importar este arquivo.')
+    }
+  }
+
+  function handleImportGroupsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    void importGroupsFromFile(file)
+  }
+
   function toggleExpanded(id: string) {
     const next = groups.map((g) =>
       g.id === id ? { ...g, expanded: !g.expanded } : g,
@@ -924,6 +989,34 @@ function App() {
                 Limpar
               </button>
             </div>
+          ) : null}
+        </div>
+
+        <div className="sidebar-transfer-card">
+          <button
+            type="button"
+            className="btn btn-outline sidebar-transfer-btn"
+            onClick={exportGroups}
+            disabled={groups.length === 0}
+          >
+            Exportar grupos
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline sidebar-transfer-btn"
+            onClick={() => importGroupsInputRef.current?.click()}
+          >
+            Importar grupos
+          </button>
+          <input
+            ref={importGroupsInputRef}
+            className="sidebar-transfer-input"
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportGroupsFile}
+          />
+          {groupsImportStatus ? (
+            <p className="sidebar-transfer-status">{groupsImportStatus}</p>
           ) : null}
         </div>
 
