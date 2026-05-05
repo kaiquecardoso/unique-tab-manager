@@ -275,6 +275,14 @@
   color: var(--text-secondary);
 }
 
+.sidebar-day-picker .rdp-today .rdp-day_button {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.sidebar-day-picker .rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--accent);
+}
+
 .sidebar-day-picker
   td.rdp-day:not(.rdp-range_start):not(.rdp-range_end):not(
     .rdp-range_middle

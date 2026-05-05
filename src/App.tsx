@@ -218,6 +218,33 @@ function IconPin({ pinned }: { pinned: boolean }) {
   )
 }
 
+function IconOpenTabs() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 8.5h9.5a2 2 0 0 1 2 2V19H7a2 2 0 0 1-2-2V8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 5h9.5a2 2 0 0 1 2 2v8.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 13h5m0 0-2-2m2 2-2 2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function IconPencil() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -395,11 +422,14 @@ function TabRow({
           />
           <div className="tab-text">
             <div className="tab-title-row">
-              <div className="tab-title">{t.title}</div>
+              <div className="tab-title" title={t.title}>
+                {t.title}
+              </div>
               <button
                 type="button"
                 className="tab-title-edit"
                 aria-label={`Editar título de ${t.title}`}
+                title="Editar título"
                 onClick={(e) => {
                   e.stopPropagation()
                   onRequestEditTitle()
@@ -409,7 +439,9 @@ function TabRow({
               </button>
             </div>
             <div className="tab-subline">
-              <span className="tab-host">{host}</span>
+              <span className="tab-host" title={host}>
+                {host}
+              </span>
               <span className="tab-subline-sep" aria-hidden>
                 ·
               </span>
@@ -427,6 +459,7 @@ function TabRow({
                 type="button"
                 className="tab-chip-remove"
                 aria-label={`Remover tag ${tag}`}
+                title={`Remover tag ${tag}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onSetTags(t.tags.filter((x) => x !== tag))
@@ -474,6 +507,7 @@ function TabRow({
                   type="button"
                   className="tab-tag-dropdown-trigger"
                   aria-label="Mostrar tags existentes"
+                  title="Mostrar tags existentes"
                   aria-haspopup="listbox"
                   aria-expanded={tagDropdownOpen}
                   aria-controls={tagDropdownId}
@@ -516,6 +550,7 @@ function TabRow({
           type="button"
           className="tab-row-delete"
           aria-label="Remover aba salva"
+          title="Remover aba salva"
           onClick={(e) => {
             e.stopPropagation()
             onRequestRemove()
@@ -931,6 +966,12 @@ function App() {
     )
   }
 
+  async function openGroupTabs(tabs: SavedTab[]) {
+    for (const [index, tab] of tabs.entries()) {
+      await chrome.tabs.create({ url: tab.url, active: index === 0 })
+    }
+  }
+
   function editGroupTitle(groupId: string) {
     const g = groups.find((x) => x.id === groupId)
     if (!g) return
@@ -1180,10 +1221,15 @@ function App() {
               return (
                 <article key={g.id} className="group-card">
                   <div className="group-header">
+                    {(() => {
+                      const groupTitle =
+                        g.customTitle ?? formatGroupPrimary(saved)
+                      return (
                     <button
                       type="button"
                       className="group-header-lead"
                       id={`group-header-${g.id}`}
+                      title={g.expanded ? 'Recolher grupo' : 'Expandir grupo'}
                       onClick={() => toggleExpanded(g.id)}
                       aria-expanded={g.expanded}
                       aria-controls={`group-panel-${g.id}`}
@@ -1192,10 +1238,12 @@ function App() {
                       <span className="group-folder-icon" aria-hidden>
                         <IconFolder />
                       </span>
-                      <span className="group-date">
-                        {g.customTitle ?? formatGroupPrimary(saved)}
+                      <span className="group-date" title={groupTitle}>
+                        {groupTitle}
                       </span>
                     </button>
+                      )
+                    })()}
                     <div className="group-header-meta">
                       <IconClock />
                       <span>{formatGroupMetaLine(saved)}</span>
@@ -1208,6 +1256,7 @@ function App() {
                         aria-label={
                           g.pinned ? 'Desfixar grupo' : 'Fixar grupo'
                         }
+                        title={g.pinned ? 'Desfixar grupo' : 'Fixar grupo'}
                         onClick={(e) => {
                           e.stopPropagation()
                           togglePin(g.id)
@@ -1218,7 +1267,20 @@ function App() {
                       <button
                         type="button"
                         className="group-tool-btn"
+                        aria-label="Abrir todas as abas do grupo"
+                        title="Abrir todas as abas do grupo"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void openGroupTabs(g.tabs)
+                        }}
+                      >
+                        <IconOpenTabs />
+                      </button>
+                      <button
+                        type="button"
+                        className="group-tool-btn"
                         aria-label="Editar nome do grupo"
+                        title="Editar nome do grupo"
                         onClick={(e) => {
                           e.stopPropagation()
                           editGroupTitle(g.id)
@@ -1230,6 +1292,7 @@ function App() {
                         type="button"
                         className="group-tool-btn group-tool-btn--danger"
                         aria-label="Excluir grupo"
+                        title="Excluir grupo"
                         onClick={(e) => {
                           e.stopPropagation()
                           openConfirmDeleteModal({
