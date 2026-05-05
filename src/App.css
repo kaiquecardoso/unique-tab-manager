@@ -521,11 +521,17 @@ html[data-theme='dark'] .btn-danger:hover:not(:disabled) {
 }
 
 .group-card {
+  position: relative;
   background: var(--surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--group-header-border);
   box-shadow: var(--shadow-card);
   overflow: hidden;
+}
+
+.group-card:has(.tab-tag-input-shell--open) {
+  z-index: 10;
+  overflow: visible;
 }
 
 .group-header {
@@ -677,6 +683,10 @@ html[data-theme='dark'] .group-tool-btn:hover {
   min-height: 0;
 }
 
+.group-accordion-inner:has(.tab-tag-input-shell--open) {
+  overflow: visible;
+}
+
 .group-body {
   padding: 4px 8px 12px;
   border-top: none;
@@ -704,18 +714,20 @@ html[data-theme='dark'] .group-tool-btn:hover {
 
 .tab-row-tags-field {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
+  overflow: visible;
 }
 
 .tab-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  max-width: 100%;
+  flex-shrink: 0;
   min-height: 28px;
   padding: 2px 6px 2px 9px;
   border-radius: 999px;
@@ -749,6 +761,31 @@ html[data-theme='dark'] .group-tool-btn:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.tab-tag-input-shell {
+  display: inline-flex;
+  align-items: stretch;
+  position: relative;
+  flex: 0 0 auto;
+  width: 7.5rem;
+  height: 28px;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--main-bg));
+  vertical-align: middle;
+}
+
+.tab-tag-input-shell:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  border-style: solid;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.tab-tag-input-shell--pass-through {
+  display: contents;
+}
+
 .tab-tag-input {
   flex: 0 0 auto;
   width: auto;
@@ -766,16 +803,125 @@ html[data-theme='dark'] .group-tool-btn:hover {
   field-sizing: content;
 }
 
+.tab-tag-input--in-shell {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  padding: 0 0 0 10px;
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+  field-sizing: fixed;
+}
+
+.tab-tag-input--in-shell:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.tab-tag-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-item-host);
+  cursor: pointer;
+}
+
+.tab-tag-dropdown-trigger:hover {
+  color: var(--text-item-title);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.tab-tag-dropdown-trigger span {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transform: translateY(1px);
+  transition: transform 0.16s ease;
+}
+
+.tab-tag-input-shell--open .tab-tag-dropdown-trigger span {
+  transform: translateY(0) rotate(180deg);
+}
+
+.tab-tag-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  display: grid;
+  gap: 2px;
+  min-width: 10rem;
+  max-height: 12rem;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease,
+    visibility 0.14s ease;
+  visibility: hidden;
+}
+
+.tab-tag-dropdown--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+}
+
+.tab-tag-dropdown-option {
+  min-width: 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-item-title);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.tab-tag-dropdown-option:hover,
+.tab-tag-dropdown-option:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
 .tab-tag-input::placeholder {
   color: var(--text-item-host);
   opacity: 0.85;
 }
 
-.tab-tag-input:focus {
+.tab-tag-input:not(.tab-tag-input--in-shell):focus {
   outline: none;
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
   border-style: solid;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.tab-tag-input--in-shell:focus {
+  outline: none;
 }
 
 .shell--loading {

@@ -1,4 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import type { DateRange } from 'react-day-picker'
 import { DayPicker } from 'react-day-picker'
@@ -265,18 +273,59 @@ function TabRow({
   tab: t,
   onRequestRemove,
   onSetTags,
+  existingTagOptions,
 }: {
   tab: SavedTab
   onRequestRemove: () => void
   onSetTags: (tags: string[]) => void
+  /** Tags já usadas em alguma aba (ordenadas), sugeridas no mesmo campo de nova tag. */
+  existingTagOptions: string[]
 }) {
+  const tagDropdownId = useId()
+  const tagPickerRef = useRef<HTMLSpanElement>(null)
   const [tagDraft, setTagDraft] = useState('')
+
+  const selectableExistingTags = useMemo(
+    () => existingTagOptions.filter((tag) => !t.tags.includes(tag)),
+    [existingTagOptions, t.tags],
+  )
+  const hasTagSuggestions = selectableExistingTags.length > 0
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    if (!tagDropdownOpen) return
+
+    function handlePointerDown(e: PointerEvent) {
+      if (!tagPickerRef.current?.contains(e.target as Node)) {
+        setTagDropdownOpen(false)
+      }
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setTagDropdownOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [tagDropdownOpen])
 
   function commitTagDraft() {
     const raw = tagDraft
     setTagDraft('')
+    setTagDropdownOpen(false)
     const next = mergeNewTags(t.tags, raw)
     if (JSON.stringify(next) !== JSON.stringify(t.tags)) onSetTags(next)
+  }
+
+  function addExistingTag(tag: string) {
+    const next = mergeNewTags(t.tags, tag)
+    if (JSON.stringify(next) !== JSON.stringify(t.tags)) onSetTags(next)
+    setTagDropdownOpen(false)
   }
 
   let host: string
@@ -346,26 +395,81 @@ function TabRow({
               </button>
             </span>
           ))}
-          <input
-            className="tab-tag-input"
-            type="text"
-            value={tagDraft}
-            size={tagInputSize}
-            onChange={(e) => setTagDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                commitTagDraft()
+          <span
+            ref={tagPickerRef}
+            className={
+              hasTagSuggestions
+                ? `tab-tag-input-shell${tagDropdownOpen ? ' tab-tag-input-shell--open' : ''}`
+                : 'tab-tag-input-shell tab-tag-input-shell--pass-through'
+            }
+          >
+            <input
+              className={
+                hasTagSuggestions
+                  ? 'tab-tag-input tab-tag-input--in-shell'
+                  : 'tab-tag-input'
               }
-            }}
-            onBlur={() => {
-              commitTagDraft()
-            }}
-            onClick={(e) => e.stopPropagation()}
-            placeholder={TAG_INPUT_PLACEHOLDER}
-            aria-label="Adicionar tags (Enter ou vírgula)"
-            maxLength={64}
-          />
+              type="text"
+              value={tagDraft}
+              size={hasTagSuggestions ? undefined : tagInputSize}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitTagDraft()
+                }
+              }}
+              onBlur={() => {
+                commitTagDraft()
+              }}
+              onClick={(e) => e.stopPropagation()}
+              placeholder={TAG_INPUT_PLACEHOLDER}
+              aria-label="Nova tag"
+              maxLength={64}
+            />
+            {hasTagSuggestions ? (
+              <>
+                <button
+                  type="button"
+                  className="tab-tag-dropdown-trigger"
+                  aria-label="Mostrar tags existentes"
+                  aria-haspopup="listbox"
+                  aria-expanded={tagDropdownOpen}
+                  aria-controls={tagDropdownId}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setTagDropdownOpen((open) => !open)
+                  }}
+                >
+                  <span aria-hidden />
+                </button>
+                <div
+                  id={tagDropdownId}
+                  className={`tab-tag-dropdown${tagDropdownOpen ? ' tab-tag-dropdown--open' : ''}`}
+                  role="listbox"
+                  aria-label="Tags existentes"
+                >
+                  {selectableExistingTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="tab-tag-dropdown-option"
+                      role="option"
+                      aria-selected={false}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        addExistingTag(tag)
+                      }}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </span>
         </div>
         <button
           type="button"
@@ -896,6 +1000,7 @@ function App() {
                           <TabRow
                             key={t.id}
                             tab={t}
+                            existingTagOptions={tagIndex.map((x) => x.tag)}
                             onRequestRemove={() =>
                               openConfirmDeleteModal({
                                 variant: 'tab',
