@@ -830,9 +830,9 @@ function App() {
     [orderedGroups, search, activeTagSet, groupDateRange],
   )
 
-  const totalTabs = useMemo(
-    () => groups.reduce((n, g) => n + g.tabs.length, 0),
-    [groups],
+  const visibleTabs = useMemo(
+    () => visible.reduce((n, g) => n + g.tabs.length, 0),
+    [visible],
   )
 
   function setTabTags(groupId: string, tabId: string, tags: string[]) {
@@ -1051,11 +1051,11 @@ function App() {
 
         <div className="stats">
           <div className="stat-card">
-            <div className="stat-value">{groups.length}</div>
+            <div className="stat-value">{visible.length}</div>
             <div className="stat-label">grupos</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{totalTabs}</div>
+            <div className="stat-value">{visibleTabs}</div>
             <div className="stat-label">abas</div>
           </div>
         </div>
