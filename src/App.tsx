@@ -128,6 +128,19 @@ function IconSearch() {
   )
 }
 
+function IconMenu() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h16M4 12h16M4 17h16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 function IconChevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -544,6 +557,7 @@ function App() {
   const [groupDateRange, setGroupDateRange] = useState<
     DateRange | undefined
   >()
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
@@ -613,13 +627,14 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!confirmModalMounted && !editTitleModalMounted) return
+    if (!confirmModalMounted && !editTitleModalMounted && !mobileSidebarOpen)
+      return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prev
     }
-  }, [confirmModalMounted, editTitleModalMounted])
+  }, [confirmModalMounted, editTitleModalMounted, mobileSidebarOpen])
 
   useEffect(() => {
     if (!confirmModalMounted) return
@@ -691,6 +706,15 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [editTitleModalMounted])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileSidebarOpen])
 
   function requestCloseConfirmModal() {
     confirmModalOpenRef.current = false
@@ -935,7 +959,35 @@ function App() {
   return (
     <Fragment>
       <div className="shell">
-      <aside className="sidebar">
+      <header className="mobile-header">
+        <div className="mobile-header-brand">
+          <IconLogo />
+          <div>
+            <div className="mobile-header-title">OneTab Manager</div>
+            <div className="mobile-header-sub">GERENCIADOR DE ABAS</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          aria-label={mobileSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+          aria-expanded={mobileSidebarOpen}
+          aria-controls="app-sidebar"
+          onClick={() => setMobileSidebarOpen((open) => !open)}
+        >
+          {mobileSidebarOpen ? <IconClose /> : <IconMenu />}
+        </button>
+      </header>
+      <button
+        type="button"
+        className={`sidebar-scrim${mobileSidebarOpen ? ' sidebar-scrim--open' : ''}`}
+        aria-label="Fechar menu"
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+      <aside
+        id="app-sidebar"
+        className={`sidebar${mobileSidebarOpen ? ' sidebar--open' : ''}`}
+      >
         <header className="sidebar-brand">
           <IconLogo />
           <div>
