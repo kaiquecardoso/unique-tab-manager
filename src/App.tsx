@@ -97,11 +97,18 @@ function IconLogo() {
     >
       <rect width="36" height="36" rx="14" fill="var(--accent)" />
       <path
-        d="M11 20 L18 13 L25 20"
-        stroke="white"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M18 8.5 27 13l-9 4.5L9 13l9-4.5Z"
+        fill="white"
+      />
+      <path
+        d="m10.8 16.9 7.2 3.6 7.2-3.6 1.8.9-9 4.5-9-4.5 1.8-.9Z"
+        fill="white"
+        opacity="0.78"
+      />
+      <path
+        d="m10.8 21.1 7.2 3.6 7.2-3.6 1.8.9-9 4.5-9-4.5 1.8-.9Z"
+        fill="white"
+        opacity="0.58"
       />
     </svg>
   )
@@ -272,11 +279,13 @@ const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
 function TabRow({
   tab: t,
   onRequestRemove,
+  onRequestEditTitle,
   onSetTags,
   existingTagOptions,
 }: {
   tab: SavedTab
   onRequestRemove: () => void
+  onRequestEditTitle: () => void
   onSetTags: (tags: string[]) => void
   /** Tags já usadas em alguma aba (ordenadas), sugeridas no mesmo campo de nova tag. */
   existingTagOptions: string[]
@@ -352,10 +361,16 @@ function TabRow({
   return (
     <div className="tab-row">
       <div className="tab-row-top">
-        <button
-          type="button"
+        <div
           className="tab-row-main"
+          role="button"
+          tabIndex={0}
           onClick={openTab}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            openTab()
+          }}
         >
           <img
             className="tab-favicon"
@@ -366,7 +381,20 @@ function TabRow({
             loading="lazy"
           />
           <div className="tab-text">
-            <div className="tab-title">{t.title}</div>
+            <div className="tab-title-row">
+              <div className="tab-title">{t.title}</div>
+              <button
+                type="button"
+                className="tab-title-edit"
+                aria-label={`Editar título de ${t.title}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRequestEditTitle()
+                }}
+              >
+                <IconPencil />
+              </button>
+            </div>
             <div className="tab-subline">
               <span className="tab-host">{host}</span>
               <span className="tab-subline-sep" aria-hidden>
@@ -377,7 +405,7 @@ function TabRow({
               </time>
             </div>
           </div>
-        </button>
+        </div>
         <div className="tab-row-tags-field">
           {t.tags.map((tag) => (
             <span key={tag} className="tab-chip">
@@ -492,6 +520,12 @@ type ConfirmDeleteAction =
   | { variant: 'group'; groupId: string }
   | { variant: 'tab'; groupId: string; tabId: string }
 
+type EditTabTitleAction = {
+  groupId: string
+  tabId: string
+  title: string
+}
+
 const THEME_STORAGE_KEY = 'one-tab-manager-theme'
 
 function App() {
@@ -514,10 +548,21 @@ function App() {
   const confirmModalOpenRef = useRef(false)
   const [confirmAction, setConfirmAction] =
     useState<ConfirmDeleteAction | null>(null)
+  const [editTitleModalMounted, setEditTitleModalMounted] = useState(false)
+  const [editTitleModalOpen, setEditTitleModalOpen] = useState(false)
+  const editTitleModalOpenRef = useRef(false)
+  const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const [editTitleAction, setEditTitleAction] =
+    useState<EditTabTitleAction | null>(null)
+  const [editTitleDraft, setEditTitleDraft] = useState('')
 
   useEffect(() => {
     confirmModalOpenRef.current = confirmModalOpen
   }, [confirmModalOpen])
+
+  useEffect(() => {
+    editTitleModalOpenRef.current = editTitleModalOpen
+  }, [editTitleModalOpen])
 
   const confirmCopy = useMemo(() => {
     switch (confirmAction?.variant) {
@@ -558,13 +603,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!confirmModalMounted) return
+    if (!confirmModalMounted && !editTitleModalMounted) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prev
     }
-  }, [confirmModalMounted])
+  }, [confirmModalMounted, editTitleModalMounted])
 
   useEffect(() => {
     if (!confirmModalMounted) return
@@ -573,6 +618,18 @@ function App() {
     })
     return () => cancelAnimationFrame(id)
   }, [confirmModalMounted])
+
+  useEffect(() => {
+    if (!editTitleModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setEditTitleModalOpen(true)
+        editTitleInputRef.current?.focus()
+        editTitleInputRef.current?.select()
+      })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [editTitleModalMounted])
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -616,9 +673,23 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [confirmModalMounted])
 
+  useEffect(() => {
+    if (!editTitleModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseEditTitleModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editTitleModalMounted])
+
   function requestCloseConfirmModal() {
     confirmModalOpenRef.current = false
     setConfirmModalOpen(false)
+  }
+
+  function requestCloseEditTitleModal() {
+    editTitleModalOpenRef.current = false
+    setEditTitleModalOpen(false)
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -631,9 +702,26 @@ function App() {
     }
   }
 
+  function handleEditTitleModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!editTitleModalOpenRef.current) {
+      setEditTitleModalMounted(false)
+      setEditTitleAction(null)
+      setEditTitleDraft('')
+    }
+  }
+
   function openConfirmDeleteModal(action: ConfirmDeleteAction) {
     setConfirmAction(action)
     setConfirmModalMounted(true)
+  }
+
+  function openEditTabTitleModal(action: EditTabTitleAction) {
+    setEditTitleAction(action)
+    setEditTitleDraft(action.title)
+    setEditTitleModalMounted(true)
   }
 
   const orderedGroups = useMemo(() => sortGroupsList(groups), [groups])
@@ -691,6 +779,30 @@ function App() {
             },
       ),
     )
+  }
+
+  function setTabTitle(groupId: string, tabId: string, title: string) {
+    persist(
+      groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              tabs: g.tabs.map((tab) =>
+                tab.id === tabId ? { ...tab, title } : tab,
+              ),
+            },
+      ),
+    )
+  }
+
+  function submitEditTabTitle() {
+    if (!editTitleAction) return
+    const title = editTitleDraft.trim()
+    if (title && title !== editTitleAction.title) {
+      setTabTitle(editTitleAction.groupId, editTitleAction.tabId, title)
+    }
+    requestCloseEditTitleModal()
   }
 
   function toggleExpanded(id: string) {
@@ -762,7 +874,7 @@ function App() {
         <header className="sidebar-brand">
           <IconLogo />
           <div>
-            <div className="brand-title">OneTab</div>
+            <div className="brand-title">OneTab Manager</div>
             <div className="brand-sub">GERENCIADOR DE ABAS</div>
           </div>
         </header>
@@ -1009,6 +1121,13 @@ function App() {
                               })
                             }
                             onSetTags={(tags) => setTabTags(g.id, t.id, tags)}
+                            onRequestEditTitle={() =>
+                              openEditTabTitleModal({
+                                groupId: g.id,
+                                tabId: t.id,
+                                title: t.title,
+                              })
+                            }
                           />
                         ))}
                       </div>
@@ -1021,6 +1140,65 @@ function App() {
         </div>
       </main>
     </div>
+
+      {editTitleModalMounted && editTitleAction
+        ? createPortal(
+            <div
+              className={`modal-backdrop${editTitleModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={requestCloseEditTitleModal}
+              onTransitionEnd={handleEditTitleModalBackdropTransitionEnd}
+            >
+              <form
+                className="modal-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="edit-title-modal-title"
+                aria-describedby="edit-title-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  submitEditTabTitle()
+                }}
+              >
+                <h2 id="edit-title-modal-title" className="modal-title">
+                  Editar título do site
+                </h2>
+                <p id="edit-title-modal-desc" className="modal-body">
+                  Altere como este site aparece na sua lista de abas salvas.
+                </p>
+                <label className="modal-field">
+                  <span className="modal-field-label">Título</span>
+                  <input
+                    ref={editTitleInputRef}
+                    className="modal-input"
+                    type="text"
+                    value={editTitleDraft}
+                    onChange={(e) => setEditTitleDraft(e.target.value)}
+                    maxLength={160}
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={requestCloseEditTitleModal}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary modal-btn"
+                    disabled={editTitleDraft.trim().length === 0}
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {confirmModalMounted && confirmAction
         ? createPortal(

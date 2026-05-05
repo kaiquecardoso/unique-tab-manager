@@ -32,8 +32,8 @@
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-card:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 2px 8px rgba(0, 0, 0, 0.06);
+    0 1px 1px rgba(0, 0, 0, 0.02),
+    0 8px 24px rgba(0, 0, 0, 0.045);
 
   /* Cabeçalho de grupo (referência estilo lista Apple) */
   --group-header-bg: #f8f9fa;
@@ -94,7 +94,7 @@ html[data-theme='dark'] {
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.18);
   --shadow-card:
     0 0 0 0.5px rgba(255, 255, 255, 0.06),
-    0 6px 20px rgba(0, 0, 0, 0.38);
+    0 10px 28px rgba(0, 0, 0, 0.28);
 
   --group-header-bg: #2c2c2e;
   --group-header-border: rgba(84, 84, 88, 0.32);

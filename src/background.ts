@@ -14,13 +14,54 @@ function isRestrictedUrl(url: string): boolean {
   )
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function normalizeTitle(title: string | undefined): string {
+  return title?.trim() || ''
+}
+
+function isGenericYoutubeTitle(title: string, url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    if (!host.endsWith('youtube.com') && host !== 'youtu.be') return false
+  } catch {
+    return false
+  }
+
+  return /^\(\d+\)\s+YouTube$/i.test(title) || title.toLowerCase() === 'youtube'
+}
+
+async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
+  let bestTitle = normalizeTitle(tab.title)
+  if (!tab.id || !tab.url || !isGenericYoutubeTitle(bestTitle, tab.url)) {
+    return bestTitle || 'Sem título'
+  }
+
+  for (const delay of [150, 250, 400]) {
+    await sleep(delay)
+    try {
+      const freshTab = await chrome.tabs.get(tab.id)
+      const freshTitle = normalizeTitle(freshTab.title)
+      if (!freshTitle) continue
+      bestTitle = freshTitle
+      if (!isGenericYoutubeTitle(freshTitle, tab.url)) break
+    } catch {
+      break
+    }
+  }
+
+  return bestTitle || 'Sem título'
+}
+
 async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
   if (!tab.id || !tab.url || isRestrictedUrl(tab.url)) return
 
   const now = new Date().toISOString()
   const newTab: SavedTab = {
     id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: tab.title?.trim() || 'Sem título',
+    title: await resolveTabTitle(tab),
     url: tab.url,
     addedAt: now,
     tags: [],

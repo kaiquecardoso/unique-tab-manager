@@ -363,6 +363,21 @@ html[data-theme='dark'] .theme-switch__knob {
   border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
 }
 
+.btn-primary {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .btn-danger {
   color: var(--danger);
 }
@@ -1030,7 +1045,15 @@ html[data-theme='dark'] .tab-row:focus-within {
   min-width: 0;
 }
 
+.tab-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .tab-title {
+  min-width: 0;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-item-title);
@@ -1038,6 +1061,39 @@ html[data-theme='dark'] .tab-row:focus-within {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tab-title-edit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-item-host);
+  cursor: pointer;
+  opacity: 0.72;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.tab-title-edit svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tab-title-edit:hover,
+.tab-title-edit:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
 }
 
 .tab-subline {
@@ -1170,6 +1226,36 @@ html[data-theme='dark'] .modal-dialog {
   font-size: 0.9375rem;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+.modal-field {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 22px;
+}
+
+.modal-field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.modal-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, var(--main-bg));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .modal-actions {
