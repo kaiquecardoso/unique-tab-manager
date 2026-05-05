@@ -257,13 +257,13 @@
   flex-shrink: 0;
 }
 
-/* Intensidade por volume relativo ao dia mais carregado (tom vermelho) */
+/* Volume absoluto de abas salvas no dia: 1-3, 4-8, 9+. */
 .sidebar-cal-dot--low {
-  background: color-mix(in srgb, var(--danger) 38%, var(--text-muted));
+  background: #34c759;
 }
 
 .sidebar-cal-dot--mid {
-  background: color-mix(in srgb, var(--danger) 72%, var(--surface));
+  background: #ffcc00;
 }
 
 .sidebar-cal-dot--high {
@@ -288,12 +288,20 @@
   color: var(--text-secondary);
 }
 
-.sidebar-day-picker .rdp-today .rdp-day_button {
+.sidebar-day-picker
+  .rdp-today:not(.rdp-range_start):not(.rdp-range_end)
+  .rdp-day_button {
+  border-radius: var(--rdp-day_button-border-radius);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .sidebar-day-picker .rdp-today:not(.rdp-selected) .rdp-day_button {
   color: var(--accent);
+}
+
+.sidebar-day-picker .rdp-range_start .rdp-day_button,
+.sidebar-day-picker .rdp-range_end .rdp-day_button {
+  border-radius: var(--rdp-day_button-border-radius);
 }
 
 .sidebar-day-picker

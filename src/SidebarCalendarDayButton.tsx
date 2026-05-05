@@ -1,20 +1,21 @@
 import { useEffect, useRef } from 'react'
 import type { DayButtonProps } from 'react-day-picker'
 
-function dotTier(
-  count: number,
-  maxTabs: number,
-): 'low' | 'mid' | 'high' | null {
-  if (count <= 0 || maxTabs <= 0) return null
-  const r = count / maxTabs
-  if (r < 0.34) return 'low'
-  if (r < 0.67) return 'mid'
+function dotTier(count: number): 'low' | 'mid' | 'high' | null {
+  if (count <= 0) return null
+  if (count <= 3) return 'low'
+  if (count <= 8) return 'mid'
   return 'high'
+}
+
+function dotTierLabel(tier: 'low' | 'mid' | 'high'): string {
+  if (tier === 'low') return 'poucas abas'
+  if (tier === 'mid') return 'volume moderado de abas'
+  return 'muitas abas'
 }
 
 export function createSidebarCalendarDayButton(
   tabsByDay: Map<string, number>,
-  maxTabsPerDay: number,
 ) {
   return function SidebarCalendarDayButton(props: DayButtonProps) {
     const { day, modifiers, children, ...buttonProps } = props
@@ -25,7 +26,7 @@ export function createSidebarCalendarDayButton(
     }, [modifiers.focused])
 
     const count = tabsByDay.get(day.isoDate) ?? 0
-    const tier = dotTier(count, maxTabsPerDay)
+    const tier = dotTier(count)
 
     return (
       <button ref={ref} {...buttonProps} type="button">
@@ -35,7 +36,7 @@ export function createSidebarCalendarDayButton(
             <span
               className={`sidebar-cal-dot sidebar-cal-dot--${tier}`}
               aria-hidden
-              title={`${count} abas neste dia`}
+              title={`${count} aba${count === 1 ? '' : 's'} neste dia (${dotTierLabel(tier)})`}
             />
           ) : null}
         </span>

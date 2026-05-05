@@ -814,14 +814,14 @@ function App() {
       .sort((a, b) => a.tag.localeCompare(b.tag, 'pt-BR'))
   }, [groups])
 
-  const { map: tabsByDayMap, max: maxTabsPerDay } = useMemo(
+  const { map: tabsByDayMap } = useMemo(
     () => buildTabsCountByLocalDay(groups),
     [groups],
   )
 
   const sidebarCalendarDayButton = useMemo(
-    () => createSidebarCalendarDayButton(tabsByDayMap, maxTabsPerDay),
-    [tabsByDayMap, maxTabsPerDay],
+    () => createSidebarCalendarDayButton(tabsByDayMap),
+    [tabsByDayMap],
   )
 
   const visible = useMemo(
