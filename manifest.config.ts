@@ -7,12 +7,24 @@ export default defineManifest({
   description:
     'Ao clicar no ícone, a aba atual é fechada e salva na lista. Gerencie tudo na página de opções.',
   permissions: ['storage', 'tabs', 'contextMenus'],
+  icons: {
+    16: 'src/assets/logo.png',
+    32: 'src/assets/logo.png',
+    48: 'src/assets/logo.png',
+    128: 'src/assets/logo.png',
+  },
   background: {
     service_worker: 'src/background.ts',
     type: 'module',
   },
   action: {
     default_title: 'Salvar aba atual no OneTab',
+    default_icon: {
+      16: 'src/assets/logo.png',
+      32: 'src/assets/logo.png',
+      48: 'src/assets/logo.png',
+      128: 'src/assets/logo.png',
+    },
   },
   options_ui: {
     page: 'index.html',

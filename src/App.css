@@ -1,9 +1,11 @@
 .shell {
   display: flex;
-  min-height: 100svh;
+  height: 100svh;
+  min-height: 0;
   width: 100%;
   margin: 0;
   background: var(--sidebar-bg);
+  overflow: hidden;
 }
 
 .mobile-header,
@@ -15,9 +17,12 @@
   width: 100%;
   max-width: 300px;
   flex-shrink: 0;
+  height: 100%;
   padding: 28px 22px 32px;
   border-right: 1px solid var(--border-subtle);
   background: var(--sidebar-bg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar-brand {
@@ -25,6 +30,14 @@
   align-items: center;
   gap: 14px;
   margin-bottom: 28px;
+}
+
+.app-logo {
+  display: block;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
 
 .brand-title {
@@ -441,10 +454,13 @@ html[data-theme='dark'] .btn-danger:hover:not(:disabled) {
 }
 
 .main {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   padding: 36px 40px 48px;
   background: var(--main-bg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .main-header {
