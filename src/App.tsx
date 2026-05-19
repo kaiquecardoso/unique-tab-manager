@@ -17,6 +17,7 @@ import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
 import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
+import { AuthModal } from './AuthModal'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
@@ -308,6 +309,27 @@ function IconUpload() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M12 20V10m0 0l3.5 3.5M12 10l-3.5 3.5M5 6h14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconCloud() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17.5 8.5 4.5 4.5 0 0 1 19 17h-1.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 12v6m0 0-2.5-2.5M12 18l2.5-2.5"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -756,6 +778,9 @@ function App() {
   const [redirectModalMounted, setRedirectModalMounted] = useState(false)
   const [redirectModalOpen, setRedirectModalOpen] = useState(false)
   const redirectModalOpenRef = useRef(false)
+  const [authModalMounted, setAuthModalMounted] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const authModalOpenRef = useRef(false)
   const [redirectAction, setRedirectAction] =
     useState<RedirectToOpenTabAction | null>(null)
 
@@ -770,6 +795,10 @@ function App() {
   useEffect(() => {
     redirectModalOpenRef.current = redirectModalOpen
   }, [redirectModalOpen])
+
+  useEffect(() => {
+    authModalOpenRef.current = authModalOpen
+  }, [authModalOpen])
 
   const confirmCopy = useMemo(() => {
     switch (confirmAction?.variant) {
@@ -814,6 +843,7 @@ function App() {
       !confirmModalMounted &&
       !editTitleModalMounted &&
       !redirectModalMounted &&
+      !authModalMounted &&
       !mobileSidebarOpen
     )
       return
@@ -826,6 +856,7 @@ function App() {
     confirmModalMounted,
     editTitleModalMounted,
     redirectModalMounted,
+    authModalMounted,
     mobileSidebarOpen,
   ])
 
@@ -856,6 +887,14 @@ function App() {
     })
     return () => cancelAnimationFrame(id)
   }, [redirectModalMounted])
+
+  useEffect(() => {
+    if (!authModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setAuthModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [authModalMounted])
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -933,6 +972,15 @@ function App() {
   }, [redirectModalMounted])
 
   useEffect(() => {
+    if (!authModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseAuthModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [authModalMounted])
+
+  useEffect(() => {
     if (!mobileSidebarOpen) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMobileSidebarOpen(false)
@@ -954,6 +1002,24 @@ function App() {
   function requestCloseRedirectModal() {
     redirectModalOpenRef.current = false
     setRedirectModalOpen(false)
+  }
+
+  function requestCloseAuthModal() {
+    authModalOpenRef.current = false
+    setAuthModalOpen(false)
+  }
+
+  function handleAuthModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.propertyName !== 'opacity' || e.target !== e.currentTarget) return
+    if (!authModalOpenRef.current) {
+      setAuthModalMounted(false)
+    }
+  }
+
+  function openAuthModal() {
+    setAuthModalMounted(true)
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -1295,6 +1361,7 @@ function App() {
         id="app-sidebar"
         className={`sidebar${mobileSidebarOpen ? ' sidebar--open' : ''}`}
       >
+        <div className="sidebar-scroll">
         <header className="sidebar-brand">
           <IconLogo />
           <div>
@@ -1481,6 +1548,28 @@ function App() {
           Clique no ícone da extensão para salvar a aba atual. Botão direito no
           ícone → <strong>Abrir lista de abas salvas</strong>.
         </p>
+        </div>
+
+        <footer className="sidebar-footer" aria-label="Conta e sincronização">
+          <div className="sidebar-footer-card">
+            <div className="sidebar-footer-head">
+              <span className="sidebar-footer-icon" aria-hidden>
+                <IconCloud />
+              </span>
+              <div className="sidebar-footer-copy">
+                <span className="sidebar-footer-badge">Opcional</span>
+                <p className="sidebar-footer-title">Sincronizar na nuvem</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary sidebar-footer-btn"
+              onClick={() => openAuthModal()}
+            >
+              Entrar
+            </button>
+          </div>
+        </footer>
       </aside>
 
       <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
@@ -1846,6 +1935,13 @@ function App() {
             document.body,
           )
         : null}
+
+      <AuthModal
+        mounted={authModalMounted}
+        open={authModalOpen}
+        onRequestClose={requestCloseAuthModal}
+        onBackdropTransitionEnd={handleAuthModalBackdropTransitionEnd}
+      />
     </Fragment>
   )
 }

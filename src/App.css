@@ -14,14 +14,23 @@
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 300px;
   flex-shrink: 0;
   height: 100%;
   min-height: 0;
-  padding: 28px 22px 32px;
+  padding: 28px 0 0;
   border-right: 1px solid var(--border-subtle);
   background: var(--sidebar-bg);
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 22px 20px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -29,7 +38,7 @@
   -ms-overflow-style: none;
 }
 
-.sidebar::-webkit-scrollbar {
+.sidebar-scroll::-webkit-scrollbar {
   display: none;
 }
 
@@ -1176,6 +1185,75 @@ html[data-theme='dark'] .group-tool-btn:hover {
   font-weight: 600;
 }
 
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 16px 22px 28px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--sidebar-bg);
+}
+
+.sidebar-footer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.sidebar-footer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-footer-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-footer-copy {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.sidebar-footer-badge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.sidebar-footer-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.sidebar-footer-btn {
+  min-height: 40px;
+}
+
 .tab-row:hover,
 .tab-row:focus-within {
   background: rgba(0, 0, 0, 0.035);
@@ -1506,6 +1584,91 @@ html[data-theme='dark'] .modal-dialog {
   outline-offset: 2px;
 }
 
+.modal-dialog--auth {
+  max-width: 440px;
+}
+
+.auth-modal-subtitle {
+  margin-bottom: 20px;
+}
+
+.auth-oauth-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.auth-oauth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.auth-oauth-btn:hover {
+  background: var(--surface-raised);
+  border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
+}
+
+.auth-oauth-btn:active {
+  transform: scale(0.98);
+}
+
+.auth-oauth-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.auth-oauth-btn--twitch {
+  border-color: color-mix(in srgb, #9146ff 28%, var(--border-subtle));
+  background: color-mix(in srgb, #9146ff 8%, var(--surface));
+}
+
+.auth-oauth-btn--twitch:hover {
+  background: color-mix(in srgb, #9146ff 14%, var(--surface));
+  border-color: color-mix(in srgb, #9146ff 40%, var(--border-subtle));
+}
+
+.auth-oauth-btn-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-modal-feedback {
+  margin: 12px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.auth-modal-actions {
+  margin-top: 18px;
+  justify-content: center;
+}
+
+.auth-modal-cancel {
+  width: 100%;
+  max-width: none;
+}
+
 @media (max-width: 900px) {
   .shell {
     flex-direction: column;
@@ -1613,14 +1776,21 @@ html[data-theme='dark'] .modal-dialog {
     z-index: 50;
     width: min(86vw, 320px);
     max-width: none;
-    padding: 24px 20px 32px;
+    padding: 24px 0 0;
     border-right: 1px solid var(--border-subtle);
     border-bottom: none;
     box-shadow: 18px 0 42px rgba(0, 0, 0, 0.12);
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     transform: translateX(-105%);
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .sidebar-scroll {
+    padding: 0 20px 20px;
+  }
+
+  .sidebar-footer {
+    padding: 14px 20px 24px;
   }
 
   .sidebar--open {
