@@ -333,6 +333,7 @@ const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
 
 function TabRow({
   tab: t,
+  simpleLayout,
   onRequestRemove,
   onRequestEditTitle,
   onOpenTab,
@@ -341,6 +342,7 @@ function TabRow({
   existingTagOptions,
 }: {
   tab: SavedTab
+  simpleLayout: boolean
   onRequestRemove: () => void
   onRequestEditTitle: () => void
   onOpenTab: () => void
@@ -396,11 +398,13 @@ function TabRow({
     setTagDropdownOpen(false)
   }
 
-  let host: string
-  try {
-    host = new URL(t.url).hostname.replace(/^www\./, '')
-  } catch {
-    host = t.url
+  let host = ''
+  if (!simpleLayout) {
+    try {
+      host = new URL(t.url).hostname.replace(/^www\./, '')
+    } catch {
+      host = t.url
+    }
   }
 
   function openTab() {
@@ -418,7 +422,7 @@ function TabRow({
   )
 
   return (
-    <div className="tab-row">
+    <div className={`tab-row${simpleLayout ? ' tab-row--simple' : ''}`}>
       <div className="tab-row-top">
         <div
           className="tab-row-main"
@@ -435,8 +439,8 @@ function TabRow({
             className="tab-favicon"
             src={faviconUrl(t.url)}
             alt=""
-            width={32}
-            height={32}
+            width={simpleLayout ? 20 : 32}
+            height={simpleLayout ? 20 : 32}
             loading="lazy"
           />
           <div className="tab-text">
@@ -474,17 +478,19 @@ function TabRow({
                 </button>
               ) : null}
             </div>
-            <div className="tab-subline">
-              <span className="tab-host" title={host}>
-                {host}
-              </span>
-              <span className="tab-subline-sep" aria-hidden>
-                ·
-              </span>
-              <time className="tab-added" dateTime={t.addedAt}>
-                {formatTabAddedAt(t.addedAt)}
-              </time>
-            </div>
+            {!simpleLayout ? (
+              <div className="tab-subline">
+                <span className="tab-host" title={host}>
+                  {host}
+                </span>
+                <span className="tab-subline-sep" aria-hidden>
+                  ·
+                </span>
+                <time className="tab-added" dateTime={t.addedAt}>
+                  {formatTabAddedAt(t.addedAt)}
+                </time>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="tab-row-tags-field">
@@ -624,6 +630,7 @@ type GroupsExportFile = {
 }
 
 const THEME_STORAGE_KEY = 'one-tab-manager-theme'
+const SIMPLE_LAYOUT_STORAGE_KEY = 'one-tab-manager-simple-layout'
 const GROUPS_EXPORT_VERSION = 1
 
 function App() {
@@ -638,6 +645,13 @@ function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
+    } catch {
+      return false
+    }
+  })
+  const [simpleLayout, setSimpleLayout] = useState(() => {
+    try {
+      return localStorage.getItem(SIMPLE_LAYOUT_STORAGE_KEY) === 'true'
     } catch {
       return false
     }
@@ -771,6 +785,21 @@ function App() {
       /* armazenamento indisponível (ex.: contexto restrito) */
     }
   }, [darkMode])
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      'data-simple-layout',
+      simpleLayout ? 'true' : 'false',
+    )
+    try {
+      localStorage.setItem(
+        SIMPLE_LAYOUT_STORAGE_KEY,
+        simpleLayout ? 'true' : 'false',
+      )
+    } catch {
+      /* armazenamento indisponível (ex.: contexto restrito) */
+    }
+  }, [simpleLayout])
 
   useEffect(() => {
     void loadGroups().then((loaded) => {
@@ -1267,20 +1296,37 @@ function App() {
           ) : null}
         </div>
 
-        <div className="sidebar-theme-row">
-          <span className="sidebar-theme-label" id="theme-switch-label">
-            Modo escuro
-          </span>
-          <button
-            type="button"
-            className="theme-switch"
-            role="switch"
-            aria-checked={darkMode}
-            aria-labelledby="theme-switch-label"
-            onClick={() => setDarkMode((v) => !v)}
-          >
-            <span className="theme-switch__knob" aria-hidden />
-          </button>
+        <div className="sidebar-settings">
+          <div className="sidebar-theme-row">
+            <span className="sidebar-theme-label" id="theme-switch-label">
+              Modo escuro
+            </span>
+            <button
+              type="button"
+              className="theme-switch"
+              role="switch"
+              aria-checked={darkMode}
+              aria-labelledby="theme-switch-label"
+              onClick={() => setDarkMode((v) => !v)}
+            >
+              <span className="theme-switch__knob" aria-hidden />
+            </button>
+          </div>
+          <div className="sidebar-theme-row">
+            <span className="sidebar-theme-label" id="simple-layout-switch-label">
+              Layout simples
+            </span>
+            <button
+              type="button"
+              className="theme-switch"
+              role="switch"
+              aria-checked={simpleLayout}
+              aria-labelledby="simple-layout-switch-label"
+              onClick={() => setSimpleLayout((v) => !v)}
+            >
+              <span className="theme-switch__knob" aria-hidden />
+            </button>
+          </div>
         </div>
 
         <div className="sidebar-actions">
@@ -1301,12 +1347,14 @@ function App() {
         </p>
       </aside>
 
-      <main className="main">
+      <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
         <header className="main-header">
           <h1 className="main-title">Abas salvas</h1>
-          <p className="main-subtitle">
-            Gerencie suas abas do navegador em um só lugar.
-          </p>
+          {!simpleLayout ? (
+            <p className="main-subtitle">
+              Gerencie suas abas do navegador em um só lugar.
+            </p>
+          ) : null}
         </header>
 
         {tagIndex.length > 0 ? (
@@ -1373,7 +1421,10 @@ function App() {
             visible.map((g) => {
               const saved = new Date(g.savedAt)
               return (
-                <article key={g.id} className="group-card">
+                <article
+                  key={g.id}
+                  className={`group-card${simpleLayout ? ' group-card--simple' : ''}`}
+                >
                   <div className="group-header">
                     {(() => {
                       const groupTitle =
@@ -1398,10 +1449,12 @@ function App() {
                     </button>
                       )
                     })()}
-                    <div className="group-header-meta">
-                      <IconClock />
-                      <span>{formatGroupMetaLine(saved)}</span>
-                    </div>
+                    {!simpleLayout ? (
+                      <div className="group-header-meta">
+                        <IconClock />
+                        <span>{formatGroupMetaLine(saved)}</span>
+                      </div>
+                    ) : null}
                     <span className="group-badge">{g.tabs.length}</span>
                     <div className="group-header-tools">
                       <button
@@ -1474,6 +1527,7 @@ function App() {
                           <TabRow
                             key={t.id}
                             tab={t}
+                            simpleLayout={simpleLayout}
                             existingTagOptions={tagIndex.map((x) => x.tag)}
                             onRequestRemove={() =>
                               openConfirmDeleteModal({

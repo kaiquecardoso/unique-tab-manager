@@ -312,12 +312,18 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.sidebar-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
 .sidebar-theme-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -1496,4 +1502,148 @@ html[data-theme='dark'] .modal-dialog {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+
+/* Layout simples */
+html[data-simple-layout='true'] .main--simple {
+  padding-top: 28px;
+  padding-bottom: 36px;
+}
+
+html[data-simple-layout='true'] .main-header {
+  margin-bottom: 18px;
+}
+
+html[data-simple-layout='true'] .main-title {
+  font-size: 1.45rem;
+  margin-bottom: 0;
+}
+
+html[data-simple-layout='true'] .group-list {
+  gap: 10px;
+}
+
+html[data-simple-layout='true'] .group-card--simple {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-header {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-folder-icon {
+  display: none;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-header-lead {
+  gap: 6px;
+  padding-left: 2px;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-date {
+  font-size: 0.78rem;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-badge {
+  min-width: 20px;
+  height: 20px;
+  font-size: 0.62rem;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-header-tools .group-tool-btn:not(.group-tool-btn--danger) {
+  display: none;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-tool-btn {
+  width: 28px;
+  height: 28px;
+}
+
+html[data-simple-layout='true'] .group-card--simple .group-body {
+  padding: 0 4px 6px;
+}
+
+.tab-row--simple {
+  padding: 1px 4px 2px 2px;
+}
+
+.tab-row--simple .tab-row-top {
+  gap: 4px;
+}
+
+.tab-row--simple .tab-row-main {
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.tab-row--simple .tab-favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.tab-row--simple .tab-title {
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+.tab-row--simple .tab-title-edit {
+  width: 20px;
+  height: 20px;
+}
+
+.tab-row--simple .tab-title-edit svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tab-row--simple .tab-row-delete {
+  width: 26px;
+  height: 26px;
+  opacity: 0.55;
+}
+
+.tab-row--simple:hover .tab-row-delete,
+.tab-row--simple:focus-within .tab-row-delete {
+  opacity: 1;
+}
+
+.tab-row--simple .tab-row-tags-field {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tab-row--simple .tab-chip {
+  min-height: 22px;
+  padding: 1px 4px 1px 7px;
+  font-size: 0.68rem;
+}
+
+.tab-row--simple .tab-chip-remove {
+  width: 16px;
+  height: 16px;
+  font-size: 0.9rem;
+}
+
+.tab-row--simple .tab-tag-input-shell {
+  width: 6.25rem;
+  height: 22px;
+}
+
+.tab-row--simple .tab-tag-input {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 0.68rem;
+}
+
+html[data-simple-layout='true'] .tag-filter-bar {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+}
+
+html[data-simple-layout='true'] .tag-filter-pill {
+  padding: 4px 9px;
+  font-size: 0.72rem;
 }
