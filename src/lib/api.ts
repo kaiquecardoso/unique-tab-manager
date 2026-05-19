@@ -22,7 +22,7 @@ export function getApiUrl(): string {
 }
 
 export function getOAuthStartUrl(provider: AuthProvider): string {
-  return `${getApiUrl()}/auth/${provider}?client=extension`
+  return `${getApiUrl()}/auth/extension/${provider}`
 }
 
 export async function getStoredToken(): Promise<string | null> {

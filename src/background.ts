@@ -1,8 +1,10 @@
 import { registerAuthTabListener } from './lib/authTabListener'
+import { registerOAuthPopupTracking } from './lib/oauthPopup'
 import { loadGroups, saveGroups } from './lib/groupsStorage'
 import { registerRealtimeListeners } from './lib/realtime'
 
 registerAuthTabListener()
+registerOAuthPopupTracking()
 registerRealtimeListeners()
 import { calendarDayKey } from './lib/calendarDay'
 import type { SavedTab, TabGroup } from './types/tabs'

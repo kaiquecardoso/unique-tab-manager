@@ -19,9 +19,14 @@ export function registerAuthTabListener(): void {
     void (async () => {
       await setStoredToken(token)
       try {
-        await chrome.tabs.remove(tabId)
+        const tab = await chrome.tabs.get(tabId)
+        if (tab.windowId !== undefined) {
+          await chrome.windows.remove(tab.windowId)
+        } else {
+          await chrome.tabs.remove(tabId)
+        }
       } catch {
-        /* aba já fechada */
+        /* janela/aba já fechada */
       }
       try {
         await chrome.runtime.sendMessage({ type: 'auth-success' })

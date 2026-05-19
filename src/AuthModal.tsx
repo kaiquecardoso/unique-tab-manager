@@ -1,6 +1,7 @@
 import { useEffect, useState, type TransitionEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { getOAuthStartUrl, type AuthProvider } from './lib/api'
+import { type AuthProvider } from './lib/api'
+import { openOAuthPopup } from './lib/oauthPopup'
 
 type AuthModalProps = {
   mounted: boolean
@@ -68,8 +69,8 @@ export function AuthModal({
 
   async function handleProviderLogin(provider: AuthProvider) {
     try {
-      await chrome.tabs.create({ url: getOAuthStartUrl(provider) })
-      setFeedback('Conclua o login na aba que abriu. Esta página atualiza ao terminar.')
+      await openOAuthPopup(provider)
+      setFeedback('Conclua o login na janela que abriu. Esta página atualiza ao terminar.')
       onLoginStarted?.()
     } catch {
       setFeedback('Não foi possível abrir a janela de login.')
