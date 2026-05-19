@@ -16,6 +16,7 @@ import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
 import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
 import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
+import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
@@ -747,6 +748,7 @@ function App() {
   const editTitleModalOpenRef = useRef(false)
   const editTitleInputRef = useRef<HTMLInputElement>(null)
   const importGroupsInputRef = useRef<HTMLInputElement>(null)
+  const themeSwitchRef = useRef<HTMLButtonElement>(null)
   const [editTitleAction, setEditTitleAction] =
     useState<EditTabTitleAction | null>(null)
   const [editTitleDraft, setEditTitleDraft] = useState('')
@@ -1424,12 +1426,19 @@ function App() {
                   Modo escuro
                 </span>
                 <button
+                  ref={themeSwitchRef}
                   type="button"
                   className="theme-switch"
                   role="switch"
                   aria-checked={darkMode}
                   aria-labelledby="theme-switch-label"
-                  onClick={() => setDarkMode((v) => !v)}
+                  onClick={() => {
+                    void toggleThemeWithViewTransition(
+                      setDarkMode,
+                      !darkMode,
+                      themeSwitchRef.current,
+                    )
+                  }}
                 >
                   <span className="theme-switch__knob" aria-hidden />
                 </button>

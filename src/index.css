@@ -255,3 +255,10 @@ textarea,
 *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Animação de troca de tema (View Transitions API) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
