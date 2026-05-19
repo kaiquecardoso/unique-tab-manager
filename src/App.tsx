@@ -288,6 +288,34 @@ function IconTrash() {
   )
 }
 
+function IconDownload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 4v10m0 0l3.5-3.5M12 14l-3.5-3.5M5 18h14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconUpload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20V10m0 0l3.5 3.5M12 10l-3.5 3.5M5 6h14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function filterGroups(
   groups: TabGroup[],
   q: string,
@@ -330,6 +358,51 @@ function IconClose() {
 }
 
 const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
+
+function SidebarDropdownSection({
+  id,
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  const panelId = `sidebar-dropdown-panel-${id}`
+  const triggerId = `sidebar-dropdown-trigger-${id}`
+
+  return (
+    <div
+      className={`sidebar-dropdown sidebar-section-card${open ? ' sidebar-dropdown--open' : ''}`}
+    >
+      <button
+        type="button"
+        id={triggerId}
+        className="sidebar-dropdown-trigger"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <span className="sidebar-dropdown-title">{title}</span>
+        <IconChevron open={open} />
+      </button>
+      <div
+        id={panelId}
+        className={`sidebar-dropdown-panel${open ? ' sidebar-dropdown-panel--open' : ''}`}
+        role="region"
+        aria-labelledby={triggerId}
+      >
+        <div className="sidebar-dropdown-panel-inner" inert={!open}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function TabRow({
   tab: t,
@@ -398,13 +471,11 @@ function TabRow({
     setTagDropdownOpen(false)
   }
 
-  let host = ''
-  if (!simpleLayout) {
-    try {
-      host = new URL(t.url).hostname.replace(/^www\./, '')
-    } catch {
-      host = t.url
-    }
+  let host: string
+  try {
+    host = new URL(t.url).hostname.replace(/^www\./, '')
+  } catch {
+    host = t.url
   }
 
   function openTab() {
@@ -478,19 +549,17 @@ function TabRow({
                 </button>
               ) : null}
             </div>
-            {!simpleLayout ? (
-              <div className="tab-subline">
-                <span className="tab-host" title={host}>
-                  {host}
-                </span>
-                <span className="tab-subline-sep" aria-hidden>
-                  ·
-                </span>
-                <time className="tab-added" dateTime={t.addedAt}>
-                  {formatTabAddedAt(t.addedAt)}
-                </time>
-              </div>
-            ) : null}
+            <div className="tab-subline">
+              <span className="tab-host" title={host}>
+                {host}
+              </span>
+              <span className="tab-subline-sep" aria-hidden>
+                ·
+              </span>
+              <time className="tab-added" dateTime={t.addedAt}>
+                {formatTabAddedAt(t.addedAt)}
+              </time>
+            </div>
           </div>
         </div>
         <div className="tab-row-tags-field">
@@ -656,6 +725,18 @@ function App() {
       return false
     }
   })
+  const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
+    backup: false,
+    appearance: false,
+  })
+
+  function togglePreferenceSection(section: 'backup' | 'appearance') {
+    setPreferenceSectionsOpen((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }))
+  }
+
   const [confirmModalMounted, setConfirmModalMounted] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const confirmModalOpenRef = useRef(false)
@@ -1268,66 +1349,112 @@ function App() {
           ) : null}
         </div>
 
-        <div className="sidebar-transfer-card">
-          <button
-            type="button"
-            className="btn btn-outline sidebar-transfer-btn"
-            onClick={exportGroups}
-            disabled={groups.length === 0}
+        <section className="sidebar-preferences" aria-label="Preferências">
+          <SidebarDropdownSection
+            id="backup"
+            title="Backup"
+            open={preferenceSectionsOpen.backup}
+            onToggle={() => togglePreferenceSection('backup')}
           >
-            Exportar grupos
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline sidebar-transfer-btn"
-            onClick={() => importGroupsInputRef.current?.click()}
-          >
-            Importar grupos
-          </button>
-          <input
-            ref={importGroupsInputRef}
-            className="sidebar-transfer-input"
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImportGroupsFile}
-          />
-          {groupsImportStatus ? (
-            <p className="sidebar-transfer-status">{groupsImportStatus}</p>
-          ) : null}
-        </div>
+            <div className="sidebar-action-list">
+                <button
+                  type="button"
+                  className="sidebar-action-row"
+                  onClick={exportGroups}
+                  disabled={groups.length === 0}
+                >
+                  <span className="sidebar-action-row-icon" aria-hidden>
+                    <IconDownload />
+                  </span>
+                  <span className="sidebar-action-row-body">
+                    <span className="sidebar-action-row-label">
+                      Exportar grupos
+                    </span>
+                    <span className="sidebar-action-row-hint">
+                      Salvar arquivo JSON no dispositivo
+                    </span>
+                  </span>
+                </button>
+                <div
+                  className="sidebar-section-divider"
+                  role="separator"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  className="sidebar-action-row"
+                  onClick={() => importGroupsInputRef.current?.click()}
+                >
+                  <span className="sidebar-action-row-icon" aria-hidden>
+                    <IconUpload />
+                  </span>
+                  <span className="sidebar-action-row-body">
+                    <span className="sidebar-action-row-label">
+                      Importar grupos
+                    </span>
+                    <span className="sidebar-action-row-hint">
+                      Carregar grupos de um arquivo JSON
+                    </span>
+                  </span>
+                </button>
+              </div>
+              <input
+                ref={importGroupsInputRef}
+                className="sidebar-transfer-input"
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImportGroupsFile}
+              />
+            {groupsImportStatus ? (
+              <p className="sidebar-section-footnote">{groupsImportStatus}</p>
+            ) : null}
+          </SidebarDropdownSection>
 
-        <div className="sidebar-settings">
-          <div className="sidebar-theme-row">
-            <span className="sidebar-theme-label" id="theme-switch-label">
-              Modo escuro
-            </span>
-            <button
-              type="button"
-              className="theme-switch"
-              role="switch"
-              aria-checked={darkMode}
-              aria-labelledby="theme-switch-label"
-              onClick={() => setDarkMode((v) => !v)}
-            >
-              <span className="theme-switch__knob" aria-hidden />
-            </button>
-          </div>
-          <div className="sidebar-theme-row">
-            <span className="sidebar-theme-label" id="simple-layout-switch-label">
-              Layout simples
-            </span>
-            <button
-              type="button"
-              className="theme-switch"
-              role="switch"
-              aria-checked={simpleLayout}
-              aria-labelledby="simple-layout-switch-label"
-              onClick={() => setSimpleLayout((v) => !v)}
-            >
-              <span className="theme-switch__knob" aria-hidden />
-            </button>
-          </div>
-        </div>
+          <SidebarDropdownSection
+            id="appearance"
+            title="Aparência"
+            open={preferenceSectionsOpen.appearance}
+            onToggle={() => togglePreferenceSection('appearance')}
+          >
+              <div className="sidebar-toggle-row">
+                <span
+                  className="sidebar-toggle-row-label"
+                  id="theme-switch-label"
+                >
+                  Modo escuro
+                </span>
+                <button
+                  type="button"
+                  className="theme-switch"
+                  role="switch"
+                  aria-checked={darkMode}
+                  aria-labelledby="theme-switch-label"
+                  onClick={() => setDarkMode((v) => !v)}
+                >
+                  <span className="theme-switch__knob" aria-hidden />
+                </button>
+              </div>
+              <div className="sidebar-section-divider" role="separator" aria-hidden />
+              <div className="sidebar-toggle-row">
+                <span
+                  className="sidebar-toggle-row-label"
+                  id="simple-layout-switch-label"
+                >
+                  Layout simples
+                </span>
+                <button
+                  type="button"
+                  className="theme-switch"
+                  role="switch"
+                  aria-checked={simpleLayout}
+                  aria-labelledby="simple-layout-switch-label"
+                  onClick={() => setSimpleLayout((v) => !v)}
+                >
+                  <span className="theme-switch__knob" aria-hidden />
+                </button>
+              </div>
+          </SidebarDropdownSection>
+        </section>
 
         <div className="sidebar-actions">
           <button
@@ -1449,12 +1576,10 @@ function App() {
                     </button>
                       )
                     })()}
-                    {!simpleLayout ? (
-                      <div className="group-header-meta">
-                        <IconClock />
-                        <span>{formatGroupMetaLine(saved)}</span>
-                      </div>
-                    ) : null}
+                    <div className="group-header-meta">
+                      <IconClock />
+                      <span>{formatGroupMetaLine(saved)}</span>
+                    </div>
                     <span className="group-badge">{g.tabs.length}</span>
                     <div className="group-header-tools">
                       <button
