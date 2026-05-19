@@ -1654,16 +1654,6 @@ html[data-theme='dark'] .modal-dialog {
   outline-offset: 2px;
 }
 
-.auth-oauth-btn--twitch {
-  border-color: color-mix(in srgb, #9146ff 28%, var(--border-subtle));
-  background: color-mix(in srgb, #9146ff 8%, var(--surface));
-}
-
-.auth-oauth-btn--twitch:hover {
-  background: color-mix(in srgb, #9146ff 14%, var(--surface));
-  border-color: color-mix(in srgb, #9146ff 40%, var(--border-subtle));
-}
-
 .auth-oauth-btn-icon {
   display: inline-flex;
   flex-shrink: 0;

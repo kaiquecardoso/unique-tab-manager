@@ -1,7 +1,5 @@
 export const AUTH_TOKEN_STORAGE_KEY = 'oneTabAuthTokenV1'
 
-export type AuthProvider = 'google' | 'twitch'
-
 export type PublicUser = {
   id: string
   email: string
@@ -21,8 +19,8 @@ export function getApiUrl(): string {
   )
 }
 
-export function getOAuthStartUrl(provider: AuthProvider): string {
-  return `${getApiUrl()}/auth/extension/${provider}`
+export function getOAuthStartUrl(): string {
+  return `${getApiUrl()}/auth/extension/google`
 }
 
 export async function getStoredToken(): Promise<string | null> {

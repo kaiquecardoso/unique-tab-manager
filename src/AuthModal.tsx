@@ -1,6 +1,5 @@
 import { useEffect, useState, type TransitionEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { type AuthProvider } from './lib/api'
 import { openOAuthPopup } from './lib/oauthPopup'
 
 type AuthModalProps = {
@@ -34,23 +33,6 @@ function IconGoogle() {
   )
 }
 
-function IconTwitch() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="#9146FF"
-        d="M4 3h16v12.5l-4 4h-3l-2.5 2.5V19.5H9V15.5H4V3zm14 10.5 2.5-2.5V5H6v8.5h3v3.5l2.5-2.5H14v-3h4z"
-      />
-      <path fill="#fff" d="M14 7.5h2v5h-2v-5zm-5 0h2v5H9v-5z" />
-    </svg>
-  )
-}
-
-const PROVIDER_LABEL: Record<AuthProvider, string> = {
-  google: 'Continuar com Google',
-  twitch: 'Continuar com Twitch',
-}
-
 export function AuthModal({
   mounted,
   open,
@@ -67,9 +49,9 @@ export function AuthModal({
 
   if (!mounted) return null
 
-  async function handleProviderLogin(provider: AuthProvider) {
+  async function handleGoogleLogin() {
     try {
-      await openOAuthPopup(provider)
+      await openOAuthPopup()
       setFeedback('Conclua o login na janela que abriu. Esta página atualiza ao terminar.')
       onLoginStarted?.()
     } catch {
@@ -96,30 +78,20 @@ export function AuthModal({
           Sincronizar na nuvem
         </h2>
         <p id="auth-modal-desc" className="modal-body auth-modal-subtitle">
-          Entre com Google ou Twitch para sincronizar seus grupos e abas na nuvem
-          entre dispositivos. O login é opcional.
+          Entre com Google para sincronizar seus grupos e abas na nuvem entre dispositivos. O
+          login é opcional.
         </p>
 
         <div className="auth-oauth-list">
           <button
             type="button"
             className="auth-oauth-btn auth-oauth-btn--google"
-            onClick={() => void handleProviderLogin('google')}
+            onClick={() => void handleGoogleLogin()}
           >
             <span className="auth-oauth-btn-icon" aria-hidden>
               <IconGoogle />
             </span>
-            {PROVIDER_LABEL.google}
-          </button>
-          <button
-            type="button"
-            className="auth-oauth-btn auth-oauth-btn--twitch"
-            onClick={() => void handleProviderLogin('twitch')}
-          >
-            <span className="auth-oauth-btn-icon" aria-hidden>
-              <IconTwitch />
-            </span>
-            {PROVIDER_LABEL.twitch}
+            Continuar com Google
           </button>
         </div>
 

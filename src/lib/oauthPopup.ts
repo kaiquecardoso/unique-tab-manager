@@ -1,4 +1,4 @@
-import { getOAuthStartUrl, type AuthProvider } from './api'
+import { getOAuthStartUrl } from './api'
 
 const POPUP_WIDTH = 480
 const POPUP_HEIGHT = 640
@@ -13,7 +13,7 @@ export function registerOAuthPopupTracking(): void {
   })
 }
 
-export async function openOAuthPopup(provider: AuthProvider): Promise<void> {
+export async function openOAuthPopup(): Promise<void> {
   if (activeOAuthWindowId !== null) {
     try {
       await chrome.windows.get(activeOAuthWindowId)
@@ -25,7 +25,7 @@ export async function openOAuthPopup(provider: AuthProvider): Promise<void> {
   }
 
   const win = await chrome.windows.create({
-    url: getOAuthStartUrl(provider),
+    url: getOAuthStartUrl(),
     type: 'popup',
     width: POPUP_WIDTH,
     height: POPUP_HEIGHT,
