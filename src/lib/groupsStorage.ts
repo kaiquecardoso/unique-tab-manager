@@ -16,6 +16,7 @@ function normalizeTab(raw: SavedTab, groupSavedAt: string): SavedTab {
       typeof raw.addedAt === 'string' && raw.addedAt
         ? raw.addedAt
         : fallback,
+    viewed: raw.viewed === true,
   }
 }
 

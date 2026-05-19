@@ -6,6 +6,8 @@ export type SavedTab = {
   addedAt: string
   /** Tags normalizadas (minúsculas); filtro e busca usam os mesmos valores. */
   tags: string[]
+  /** Usuário já abriu esta aba salva pelo item da lista. */
+  viewed?: boolean
 }
 
 export type TabGroup = {

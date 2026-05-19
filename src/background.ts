@@ -2,6 +2,14 @@ import { loadGroups, saveGroups } from './lib/groupsStorage'
 import { calendarDayKey } from './lib/calendarDay'
 import type { SavedTab, TabGroup } from './types/tabs'
 
+type ContextLinkDraft = {
+  url: string
+  title?: string
+  capturedAt: number
+}
+
+const contextLinkDrafts = new Map<number, ContextLinkDraft>()
+
 function isRestrictedUrl(url: string): boolean {
   const u = url.toLowerCase()
   return (
@@ -76,20 +84,92 @@ async function resolveLinkedPageTitle(url: string): Promise<string> {
   }
 }
 
-function isGenericYoutubeTitle(title: string, url: string): boolean {
+function isGenericSiteTitle(title: string, url: string): boolean {
   try {
     const host = new URL(url).hostname.replace(/^www\./, '')
-    if (!host.endsWith('youtube.com') && host !== 'youtu.be') return false
+    const normalizedTitle = title.replace(/^\(\d+\)\s+/, '').trim().toLowerCase()
+
+    if (host.endsWith('youtube.com') || host === 'youtu.be') {
+      return normalizedTitle === 'youtube'
+    }
+
+    if (host === 'twitch.tv' || host.endsWith('.twitch.tv')) {
+      return normalizedTitle === 'twitch'
+    }
   } catch {
     return false
   }
 
-  return /^\(\d+\)\s+YouTube$/i.test(title) || title.toLowerCase() === 'youtube'
+  return false
+}
+
+async function getDocumentTitle(tabId: number): Promise<string> {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.title,
+    })
+
+    return normalizeTitle(result?.result)
+  } catch {
+    return ''
+  }
+}
+
+async function resolveLinkedRenderedTitle(
+  url: string,
+  sourceWindowId?: number,
+  sourceTabId?: number,
+): Promise<string> {
+  if (isRestrictedUrl(url)) return ''
+
+  let tabId: number | undefined
+
+  try {
+    const createdTab = await chrome.tabs.create({
+      url,
+      active: false,
+      windowId: sourceWindowId,
+    })
+    if (!createdTab?.id) return ''
+
+    tabId = createdTab.id
+
+    if (typeof sourceTabId === 'number') {
+      void chrome.tabs.update(sourceTabId, { active: true })
+    }
+
+    let bestTitle = ''
+
+    for (const delay of [500, 900, 1300, 1800, 2400]) {
+      await sleep(delay)
+
+      const linkedTab = await chrome.tabs.get(tabId)
+      const documentTitle = await getDocumentTitle(tabId)
+      const candidateTitle = documentTitle || normalizeTitle(linkedTab.title)
+      if (!candidateTitle) continue
+
+      bestTitle = candidateTitle
+      if (!isGenericSiteTitle(candidateTitle, url)) return candidateTitle
+    }
+
+    return bestTitle && !isGenericSiteTitle(bestTitle, url) ? bestTitle : ''
+  } catch {
+    return ''
+  } finally {
+    if (typeof tabId === 'number') {
+      try {
+        await chrome.tabs.remove(tabId)
+      } catch {
+        // A aba auxiliar pode ja ter sido fechada antes do cleanup.
+      }
+    }
+  }
 }
 
 async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
   let bestTitle = normalizeTitle(tab.title)
-  if (!tab.id || !tab.url || !isGenericYoutubeTitle(bestTitle, tab.url)) {
+  if (!tab.id || !tab.url || !isGenericSiteTitle(bestTitle, tab.url)) {
     return bestTitle || 'Sem título'
   }
 
@@ -98,9 +178,11 @@ async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
     try {
       const freshTab = await chrome.tabs.get(tab.id)
       const freshTitle = normalizeTitle(freshTab.title)
-      if (!freshTitle) continue
-      bestTitle = freshTitle
-      if (!isGenericYoutubeTitle(freshTitle, tab.url)) break
+      const documentTitle = await getDocumentTitle(tab.id)
+      const candidateTitle = documentTitle || freshTitle
+      if (!candidateTitle) continue
+      bestTitle = candidateTitle
+      if (!isGenericSiteTitle(candidateTitle, tab.url)) break
     } catch {
       break
     }
@@ -153,11 +235,25 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
   await chrome.runtime.openOptionsPage()
 }
 
-async function saveLinkToStorage(url: string, title?: string): Promise<string> {
+async function saveLinkToStorage(
+  url: string,
+  title?: string,
+  sourceWindowId?: number,
+  sourceTabId?: number,
+): Promise<string> {
   if (!url || isRestrictedUrl(url)) return ''
 
   const linkedPageTitle = await resolveLinkedPageTitle(url)
-  const tabTitle = normalizeTitle(linkedPageTitle) || normalizeTitle(title) || url
+  const normalizedLinkedPageTitle = normalizeTitle(linkedPageTitle)
+  const normalizedTitle = normalizeTitle(title)
+  const runtimeLinkedTitle =
+    !normalizedLinkedPageTitle || isGenericSiteTitle(normalizedLinkedPageTitle, url)
+      ? await resolveLinkedRenderedTitle(url, sourceWindowId, sourceTabId)
+      : ''
+  const tabTitle =
+    normalizedLinkedPageTitle && !isGenericSiteTitle(normalizedLinkedPageTitle, url)
+      ? normalizedLinkedPageTitle
+      : runtimeLinkedTitle || normalizedTitle || normalizedLinkedPageTitle || url
   const now = new Date().toISOString()
   const newTab: SavedTab = {
     id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -196,6 +292,17 @@ async function saveLinkToStorage(url: string, title?: string): Promise<string> {
 
   await saveGroups(nextGroups)
   return tabTitle
+}
+
+function getContextLinkTitle(tabId: number | undefined, url: string): string | undefined {
+  if (typeof tabId !== 'number') return undefined
+
+  const draft = contextLinkDrafts.get(tabId)
+  if (!draft || draft.url !== url || Date.now() - draft.capturedAt > 30_000) {
+    return undefined
+  }
+
+  return draft.title
 }
 
 async function showToastByScript(
@@ -420,20 +527,26 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 
   if (info.menuItemId === 'save-link-onetab' && info.linkUrl) {
-    const maybeTabTitle = typeof tab?.title === 'string' ? tab.title : ''
     void (async () => {
       try {
+        const linkTitle = getContextLinkTitle(tab?.id, info.linkUrl!)
+
         if (typeof tab?.id === 'number') {
-          await notifyTabWithToast(
+          void notifyTabWithToast(
             tab.id,
             'Salvando link',
             false,
             info.linkUrl,
             true,
-            maybeTabTitle,
+            linkTitle,
           )
         }
-        const savedTitle = await saveLinkToStorage(info.linkUrl!, maybeTabTitle)
+        const savedTitle = await saveLinkToStorage(
+          info.linkUrl!,
+          linkTitle,
+          tab?.windowId,
+          tab?.id,
+        )
         if (typeof tab?.id === 'number') {
           await notifyTabWithToast(
             tab.id,
@@ -441,7 +554,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             false,
             info.linkUrl,
             false,
-            savedTitle || maybeTabTitle,
+            savedTitle,
           )
         }
       } catch {
@@ -452,7 +565,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             true,
             info.linkUrl,
             false,
-            maybeTabTitle,
           )
         }
       }
@@ -461,12 +573,33 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 })
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'context-link') {
+    if (
+      typeof _sender.tab?.id === 'number' &&
+      typeof message.url === 'string' &&
+      !isRestrictedUrl(message.url)
+    ) {
+      contextLinkDrafts.set(_sender.tab.id, {
+        url: message.url,
+        title: typeof message.title === 'string' ? message.title : undefined,
+        capturedAt: Date.now(),
+      })
+    }
+
+    return
+  }
+
   if (message?.type !== 'save-link' || typeof message.url !== 'string') return
 
   void (async () => {
     try {
       const maybeTitle = typeof message.title === 'string' ? message.title : undefined
-      const savedTitle = await saveLinkToStorage(message.url, maybeTitle)
+      const savedTitle = await saveLinkToStorage(
+        message.url,
+        maybeTitle,
+        _sender.tab?.windowId,
+        _sender.tab?.id,
+      )
       sendResponse({ ok: true, title: savedTitle || maybeTitle })
     } catch {
       sendResponse({ ok: false })

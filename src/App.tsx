@@ -14,6 +14,7 @@ import { ptBR } from 'date-fns/locale'
 import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
 import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
+import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
@@ -259,6 +260,20 @@ function IconPencil() {
   )
 }
 
+function IconClearViewed() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 3l18 18M10.58 10.58A2 2 0 0 0 12 16a2 2 0 0 0 1.42-.58M9.88 9.88A4.24 4.24 0 0 1 12 8c2.21 0 4 1.79 4 4 0 .73-.2 1.41-.54 2M6.1 6.1C4.21 7.39 3 9.58 3 12c0 4.97 4.03 9 9 9 2.42 0 4.62-.95 6.1-2.1"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function IconTrash() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -320,12 +335,16 @@ function TabRow({
   tab: t,
   onRequestRemove,
   onRequestEditTitle,
+  onOpenTab,
+  onClearViewed,
   onSetTags,
   existingTagOptions,
 }: {
   tab: SavedTab
   onRequestRemove: () => void
   onRequestEditTitle: () => void
+  onOpenTab: () => void
+  onClearViewed: () => void
   onSetTags: (tags: string[]) => void
   /** Tags já usadas em alguma aba (ordenadas), sugeridas no mesmo campo de nova tag. */
   existingTagOptions: string[]
@@ -385,7 +404,7 @@ function TabRow({
   }
 
   function openTab() {
-    void chrome.tabs.create({ url: t.url })
+    onOpenTab()
   }
 
   const tagInputSize = Math.min(
@@ -422,7 +441,10 @@ function TabRow({
           />
           <div className="tab-text">
             <div className="tab-title-row">
-              <div className="tab-title" title={t.title}>
+              <div
+                className={`tab-title${t.viewed ? ' tab-title--viewed' : ''}`}
+                title={t.title}
+              >
                 {t.title}
               </div>
               <button
@@ -437,6 +459,20 @@ function TabRow({
               >
                 <IconPencil />
               </button>
+              {t.viewed ? (
+                <button
+                  type="button"
+                  className="tab-title-edit tab-title-clear-viewed"
+                  aria-label={`Desmarcar ${t.title} como visualizado`}
+                  title="Desmarcar como visualizado"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onClearViewed()
+                  }}
+                >
+                  <IconClearViewed />
+                </button>
+              ) : null}
             </div>
             <div className="tab-subline">
               <span className="tab-host" title={host}>
@@ -574,6 +610,12 @@ type EditTabTitleAction = {
   title: string
 }
 
+type RedirectToOpenTabAction = {
+  chromeTabId: number
+  groupId: string
+  tabId: string
+}
+
 type GroupsExportFile = {
   app?: string
   version?: number
@@ -614,6 +656,11 @@ function App() {
     useState<EditTabTitleAction | null>(null)
   const [editTitleDraft, setEditTitleDraft] = useState('')
   const [groupsImportStatus, setGroupsImportStatus] = useState('')
+  const [redirectModalMounted, setRedirectModalMounted] = useState(false)
+  const [redirectModalOpen, setRedirectModalOpen] = useState(false)
+  const redirectModalOpenRef = useRef(false)
+  const [redirectAction, setRedirectAction] =
+    useState<RedirectToOpenTabAction | null>(null)
 
   useEffect(() => {
     confirmModalOpenRef.current = confirmModalOpen
@@ -622,6 +669,10 @@ function App() {
   useEffect(() => {
     editTitleModalOpenRef.current = editTitleModalOpen
   }, [editTitleModalOpen])
+
+  useEffect(() => {
+    redirectModalOpenRef.current = redirectModalOpen
+  }, [redirectModalOpen])
 
   const confirmCopy = useMemo(() => {
     switch (confirmAction?.variant) {
@@ -662,14 +713,24 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!confirmModalMounted && !editTitleModalMounted && !mobileSidebarOpen)
+    if (
+      !confirmModalMounted &&
+      !editTitleModalMounted &&
+      !redirectModalMounted &&
+      !mobileSidebarOpen
+    )
       return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prev
     }
-  }, [confirmModalMounted, editTitleModalMounted, mobileSidebarOpen])
+  }, [
+    confirmModalMounted,
+    editTitleModalMounted,
+    redirectModalMounted,
+    mobileSidebarOpen,
+  ])
 
   useEffect(() => {
     if (!confirmModalMounted) return
@@ -690,6 +751,14 @@ function App() {
     })
     return () => cancelAnimationFrame(id)
   }, [editTitleModalMounted])
+
+  useEffect(() => {
+    if (!redirectModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setRedirectModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [redirectModalMounted])
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -743,6 +812,15 @@ function App() {
   }, [editTitleModalMounted])
 
   useEffect(() => {
+    if (!redirectModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseRedirectModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [redirectModalMounted])
+
+  useEffect(() => {
     if (!mobileSidebarOpen) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMobileSidebarOpen(false)
@@ -759,6 +837,11 @@ function App() {
   function requestCloseEditTitleModal() {
     editTitleModalOpenRef.current = false
     setEditTitleModalOpen(false)
+  }
+
+  function requestCloseRedirectModal() {
+    redirectModalOpenRef.current = false
+    setRedirectModalOpen(false)
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -782,6 +865,16 @@ function App() {
     }
   }
 
+  function handleRedirectModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!redirectModalOpenRef.current) {
+      setRedirectModalMounted(false)
+      setRedirectAction(null)
+    }
+  }
+
   function openConfirmDeleteModal(action: ConfirmDeleteAction) {
     setConfirmAction(action)
     setConfirmModalMounted(true)
@@ -791,6 +884,50 @@ function App() {
     setEditTitleAction(action)
     setEditTitleDraft(action.title)
     setEditTitleModalMounted(true)
+  }
+
+  function openRedirectToTabModal(action: RedirectToOpenTabAction) {
+    setRedirectAction(action)
+    setRedirectModalMounted(true)
+  }
+
+  async function handleOpenSavedTab(
+    groupId: string,
+    savedTabId: string,
+    url: string,
+    viewed: boolean,
+  ) {
+    const existing = await findOpenBrowserTab(url)
+    if (existing?.id != null) {
+      openRedirectToTabModal({
+        chromeTabId: existing.id,
+        groupId,
+        tabId: savedTabId,
+      })
+      return
+    }
+
+    if (!viewed) setTabViewed(groupId, savedTabId, true)
+    await chrome.tabs.create({ url, active: false })
+  }
+
+  async function confirmRedirectToOpenTab() {
+    if (!redirectAction) return
+    const { chromeTabId, groupId, tabId } = redirectAction
+
+    const savedTab = groups
+      .find((g) => g.id === groupId)
+      ?.tabs.find((tab) => tab.id === tabId)
+    if (savedTab && !savedTab.viewed) setTabViewed(groupId, tabId, true)
+
+    try {
+      const tab = await chrome.tabs.get(chromeTabId)
+      await focusBrowserTab(tab)
+    } catch {
+      /* aba pode ter sido fechada antes da confirmação */
+    }
+
+    requestCloseRedirectModal()
   }
 
   const orderedGroups = useMemo(() => sortGroupsList(groups), [groups])
@@ -859,6 +996,23 @@ function App() {
               ...g,
               tabs: g.tabs.map((tab) =>
                 tab.id === tabId ? { ...tab, title } : tab,
+              ),
+            },
+      ),
+    )
+  }
+
+  function setTabViewed(groupId: string, tabId: string, viewed: boolean) {
+    persist(
+      groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              tabs: g.tabs.map((tab) =>
+                tab.id === tabId
+                  ? { ...tab, viewed: viewed || undefined }
+                  : tab,
               ),
             },
       ),
@@ -1336,6 +1490,15 @@ function App() {
                                 title: t.title,
                               })
                             }
+                            onOpenTab={() =>
+                              void handleOpenSavedTab(
+                                g.id,
+                                t.id,
+                                t.url,
+                                t.viewed === true,
+                              )
+                            }
+                            onClearViewed={() => setTabViewed(g.id, t.id, false)}
                           />
                         ))}
                       </div>
@@ -1403,6 +1566,50 @@ function App() {
                   </button>
                 </div>
               </form>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {redirectModalMounted && redirectAction
+        ? createPortal(
+            <div
+              className={`modal-backdrop${redirectModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={requestCloseRedirectModal}
+              onTransitionEnd={handleRedirectModalBackdropTransitionEnd}
+            >
+              <div
+                className="modal-dialog"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="redirect-modal-title"
+                aria-describedby="redirect-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="redirect-modal-title" className="modal-title">
+                  Aba já aberta
+                </h2>
+                <p id="redirect-modal-desc" className="modal-body">
+                  Essa aba já está aberta. Deseja ser redirecionado para ela?
+                </p>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={requestCloseRedirectModal}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary modal-btn"
+                    onClick={() => void confirmRedirectToOpenTab()}
+                  >
+                    Ir para a aba
+                  </button>
+                </div>
+              </div>
             </div>,
             document.body,
           )

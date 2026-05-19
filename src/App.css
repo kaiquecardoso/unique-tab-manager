@@ -1131,6 +1131,12 @@ html[data-theme='dark'] .tab-row:focus-within {
   white-space: nowrap;
 }
 
+.tab-title--viewed {
+  text-decoration: line-through;
+  color: var(--text-item-host);
+  opacity: 0.82;
+}
+
 .tab-title-edit {
   flex-shrink: 0;
   display: inline-flex;
@@ -1157,7 +1163,9 @@ html[data-theme='dark'] .tab-row:focus-within {
 }
 
 .tab-title-edit:hover,
-.tab-title-edit:focus-visible {
+.tab-title-edit:focus-visible,
+.tab-title-clear-viewed:hover,
+.tab-title-clear-viewed:focus-visible {
   opacity: 1;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);

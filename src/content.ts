@@ -4,6 +4,12 @@ type SaveLinkMessage = {
   title?: string
 }
 
+type ContextLinkMessage = {
+  type: 'context-link'
+  url: string
+  title?: string
+}
+
 type ToastMessage = {
   type: 'show-toast'
   message: string
@@ -203,6 +209,15 @@ function isSaveShortcut(event: KeyboardEvent): boolean {
   return isShiftS || isAltS
 }
 
+function getAnchorTitle(anchor: HTMLAnchorElement): string | undefined {
+  return (
+    anchor.getAttribute('title')?.trim() ||
+    anchor.getAttribute('aria-label')?.trim() ||
+    anchor.textContent?.replace(/\s+/g, ' ').trim() ||
+    undefined
+  )
+}
+
 function saveLinkFromShortcut(anchor: HTMLAnchorElement): void {
   const href = anchor.href
   if (!href) return
@@ -210,11 +225,21 @@ function saveLinkFromShortcut(anchor: HTMLAnchorElement): void {
   const message: SaveLinkMessage = {
     type: 'save-link',
     url: href,
-    title: document.title.trim() || undefined,
+    title: getAnchorTitle(anchor),
   }
 
   showToast('Salvando link', false, href, true, message.title)
   sendSaveMessage(message)
+}
+
+function reportContextLink(anchor: HTMLAnchorElement): void {
+  const message: ContextLinkMessage = {
+    type: 'context-link',
+    url: anchor.href,
+    title: getAnchorTitle(anchor),
+  }
+
+  chrome.runtime.sendMessage(message)
 }
 
 chrome.runtime.onMessage.addListener((message: ToastMessage) => {
@@ -227,6 +252,17 @@ chrome.runtime.onMessage.addListener((message: ToastMessage) => {
     message.title,
   )
 })
+
+document.addEventListener(
+  'contextmenu',
+  (event) => {
+    const anchor = getAnchorFromTarget(event.target)
+    if (!anchor?.href) return
+
+    reportContextLink(anchor)
+  },
+  { capture: true },
+)
 
 document.addEventListener(
   'pointerover',
