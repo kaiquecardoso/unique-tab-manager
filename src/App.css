@@ -1221,6 +1221,16 @@ html[data-theme='dark'] .group-tool-btn:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.sidebar-footer-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--surface-elevated, #e8eef5);
+}
+
 .sidebar-footer-copy {
   display: flex;
   flex: 1;
@@ -1248,6 +1258,33 @@ html[data-theme='dark'] .group-tool-btn:hover {
   font-weight: 600;
   line-height: 1.25;
   color: var(--text-primary);
+}
+
+.sidebar-footer-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar-footer-sync {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--accent, #1d9bf0);
+}
+
+.sidebar-footer-sync--error {
+  color: #f4212e;
 }
 
 .sidebar-footer-btn {

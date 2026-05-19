@@ -18,6 +18,31 @@ import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import { AuthModal } from './AuthModal'
+import {
+  AUTH_TOKEN_STORAGE_KEY,
+  clearStoredToken,
+  fetchCurrentUser,
+  type PublicUser,
+} from './lib/api'
+import {
+  scheduleCloudPush,
+  syncGroupsWithCloud,
+  touchLocalSyncMeta,
+  type GroupsCloudPayload,
+} from './lib/groupsSync'
+import {
+  loadLocalPreferences,
+  saveLocalPreferences,
+  serializeDateRange,
+  parseDateRange,
+  PREFERENCES_STORAGE_KEY,
+  type UserPreferences,
+} from './lib/preferencesStorage'
+import {
+  schedulePreferencesPush,
+  syncPreferencesWithCloud,
+  type PreferencesCloudPayload,
+} from './lib/preferencesSync'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
@@ -721,8 +746,6 @@ type GroupsExportFile = {
   groups?: unknown
 }
 
-const THEME_STORAGE_KEY = 'one-tab-manager-theme'
-const SIMPLE_LAYOUT_STORAGE_KEY = 'one-tab-manager-simple-layout'
 const GROUPS_EXPORT_VERSION = 1
 
 function App() {
@@ -734,20 +757,10 @@ function App() {
     DateRange | undefined
   >()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
-    } catch {
-      return false
-    }
-  })
-  const [simpleLayout, setSimpleLayout] = useState(() => {
-    try {
-      return localStorage.getItem(SIMPLE_LAYOUT_STORAGE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
+  const [darkMode, setDarkMode] = useState(false)
+  const [simpleLayout, setSimpleLayout] = useState(false)
+  const prefsHydratedRef = useRef(false)
+  const skipPrefsPushRef = useRef(false)
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
     appearance: false,
@@ -781,6 +794,10 @@ function App() {
   const [authModalMounted, setAuthModalMounted] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const authModalOpenRef = useRef(false)
+  const [authUser, setAuthUser] = useState<PublicUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
   const [redirectAction, setRedirectAction] =
     useState<RedirectToOpenTabAction | null>(null)
 
@@ -832,11 +849,22 @@ function App() {
     }
   }, [confirmAction])
 
-  const persist = useCallback((next: TabGroup[]) => {
-    const sorted = sortGroupsList(next)
-    setGroups(sorted)
-    void saveGroups(sorted)
-  }, [])
+  const persist = useCallback(
+    (next: TabGroup[]) => {
+      const sorted = sortGroupsList(next)
+      setGroups(sorted)
+      void (async () => {
+        await saveGroups(sorted)
+        if (authUser) {
+          await touchLocalSyncMeta()
+          scheduleCloudPush(sorted)
+          setSyncStatus('ok')
+          setSyncMessage('Salvo na nuvem')
+        }
+      })()
+    },
+    [authUser],
+  )
 
   useEffect(() => {
     if (
@@ -896,16 +924,23 @@ function App() {
     return () => cancelAnimationFrame(id)
   }, [authModalMounted])
 
+  const applyPreferences = useCallback((prefs: UserPreferences) => {
+    skipPrefsPushRef.current = true
+    setDarkMode(prefs.theme === 'dark')
+    setSimpleLayout(prefs.simpleLayout)
+    setSearch(prefs.search)
+    setActiveTagFilters(prefs.activeTagFilters)
+    setGroupDateRange(parseDateRange(prefs.groupDateRange))
+    requestAnimationFrame(() => {
+      skipPrefsPushRef.current = false
+    })
+  }, [])
+
   useEffect(() => {
     document.documentElement.setAttribute(
       'data-theme',
       darkMode ? 'dark' : 'light',
     )
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light')
-    } catch {
-      /* armazenamento indisponível (ex.: contexto restrito) */
-    }
   }, [darkMode])
 
   useEffect(() => {
@@ -913,36 +948,155 @@ function App() {
       'data-simple-layout',
       simpleLayout ? 'true' : 'false',
     )
-    try {
-      localStorage.setItem(
-        SIMPLE_LAYOUT_STORAGE_KEY,
-        simpleLayout ? 'true' : 'false',
-      )
-    } catch {
-      /* armazenamento indisponível (ex.: contexto restrito) */
-    }
   }, [simpleLayout])
+
+  useEffect(() => {
+    void loadLocalPreferences().then((prefs) => {
+      applyPreferences(prefs)
+      prefsHydratedRef.current = true
+    })
+  }, [applyPreferences])
+
+  useEffect(() => {
+    if (!prefsHydratedRef.current || skipPrefsPushRef.current) return
+
+    const prefs: UserPreferences = {
+      theme: darkMode ? 'dark' : 'light',
+      simpleLayout,
+      search,
+      activeTagFilters,
+      groupDateRange: serializeDateRange(groupDateRange),
+    }
+
+    void saveLocalPreferences(prefs)
+    if (authUser) {
+      schedulePreferencesPush(prefs)
+    }
+  }, [
+    authUser,
+    darkMode,
+    simpleLayout,
+    search,
+    activeTagFilters,
+    groupDateRange,
+  ])
+
+  const runCloudSync = useCallback(async () => {
+    const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
+    if (!token[AUTH_TOKEN_STORAGE_KEY]) return
+
+    setSyncStatus('syncing')
+    setSyncMessage('Sincronizando…')
+    try {
+      const [merged, prefs] = await Promise.all([
+        syncGroupsWithCloud(),
+        syncPreferencesWithCloud(),
+      ])
+      setGroups(sortGroupsList(merged))
+      applyPreferences(prefs)
+      setSyncStatus('ok')
+      setSyncMessage('Sincronizado em tempo real')
+    } catch {
+      setSyncStatus('error')
+      setSyncMessage('Falha ao sincronizar')
+    }
+  }, [applyPreferences])
+
+  const refreshAuthSession = useCallback(async () => {
+    setAuthLoading(true)
+    try {
+      const user = await fetchCurrentUser()
+      setAuthUser(user)
+      if (user) {
+        await runCloudSync()
+      } else {
+        setSyncStatus('idle')
+        setSyncMessage('')
+      }
+    } catch {
+      setAuthUser(null)
+      setSyncStatus('idle')
+      setSyncMessage('')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [runCloudSync])
 
   useEffect(() => {
     void loadGroups().then((loaded) => {
       setGroups(sortGroupsList(loaded))
       setReady(true)
     })
-  }, [])
+    void refreshAuthSession()
+  }, [refreshAuthSession])
+
+  useEffect(() => {
+    const onMessage = (message: unknown) => {
+      if (!message || typeof message !== 'object' || !('type' in message)) return
+
+      if (message.type === 'auth-success') {
+        void refreshAuthSession()
+        requestCloseAuthModal()
+        return
+      }
+
+      if (message.type === 'realtime:groups' && 'payload' in message) {
+        const payload = message.payload as GroupsCloudPayload
+        setGroups(sortGroupsList(normalizeAllGroups(payload.groups)))
+        setSyncStatus('ok')
+        setSyncMessage('Grupos atualizados')
+        return
+      }
+
+      if (message.type === 'realtime:preferences' && 'payload' in message) {
+        const payload = message.payload as PreferencesCloudPayload
+        applyPreferences(payload.preferences)
+        setSyncStatus('ok')
+        setSyncMessage('Preferências atualizadas')
+      }
+    }
+    chrome.runtime.onMessage.addListener(onMessage)
+    return () => chrome.runtime.onMessage.removeListener(onMessage)
+  }, [refreshAuthSession, applyPreferences])
+
+  useEffect(() => {
+    const onStorage = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area !== 'local' || !changes[AUTH_TOKEN_STORAGE_KEY]) return
+      void refreshAuthSession()
+    }
+    chrome.storage.onChanged.addListener(onStorage)
+    return () => chrome.storage.onChanged.removeListener(onStorage)
+  }, [refreshAuthSession])
 
   useEffect(() => {
     const onChange = (
       changes: Record<string, chrome.storage.StorageChange>,
       area: string,
     ) => {
-      if (area !== 'local' || !changes[GROUPS_STORAGE_KEY]) return
-      const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
-      if (Array.isArray(next))
-        setGroups(sortGroupsList(normalizeAllGroups(next)))
+      if (area !== 'local') return
+
+      if (changes[GROUPS_STORAGE_KEY]) {
+        const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
+        if (Array.isArray(next)) {
+          setGroups(sortGroupsList(normalizeAllGroups(next)))
+        }
+      }
+
+      if (changes[PREFERENCES_STORAGE_KEY]) {
+        const next = changes[PREFERENCES_STORAGE_KEY].newValue as
+          | UserPreferences
+          | undefined
+        if (next && typeof next === 'object') {
+          applyPreferences(next)
+        }
+      }
     }
     chrome.storage.onChanged.addListener(onChange)
     return () => chrome.storage.onChanged.removeListener(onChange)
-  }, [])
+  }, [applyPreferences])
 
   useEffect(() => {
     if (!confirmModalMounted) return
@@ -1020,6 +1174,17 @@ function App() {
 
   function openAuthModal() {
     setAuthModalMounted(true)
+  }
+
+  async function handleLogout() {
+    await clearStoredToken()
+    await chrome.storage.local.remove([
+      'oneTabGroupsSyncV1',
+      'oneTabPreferencesSyncV1',
+    ])
+    setAuthUser(null)
+    setSyncStatus('idle')
+    setSyncMessage('')
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -1553,21 +1718,75 @@ function App() {
         <footer className="sidebar-footer" aria-label="Conta e sincronização">
           <div className="sidebar-footer-card">
             <div className="sidebar-footer-head">
-              <span className="sidebar-footer-icon" aria-hidden>
-                <IconCloud />
-              </span>
+              {authUser?.photo ? (
+                <img
+                  className="sidebar-footer-avatar"
+                  src={authUser.photo}
+                  alt=""
+                  width={36}
+                  height={36}
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="sidebar-footer-icon" aria-hidden>
+                  <IconCloud />
+                </span>
+              )}
               <div className="sidebar-footer-copy">
-                <span className="sidebar-footer-badge">Opcional</span>
-                <p className="sidebar-footer-title">Sincronizar na nuvem</p>
+                <span className="sidebar-footer-badge">
+                  {authUser ? 'Conectado' : 'Opcional'}
+                </span>
+                <p className="sidebar-footer-title">
+                  {authUser ? authUser.name : 'Sincronizar na nuvem'}
+                </p>
+                {authUser ? (
+                  <p className="sidebar-footer-subtitle">{authUser.email}</p>
+                ) : null}
+                {authUser && syncMessage ? (
+                  <p
+                    className={`sidebar-footer-sync${syncStatus === 'error' ? ' sidebar-footer-sync--error' : ''}`}
+                    role="status"
+                  >
+                    {syncMessage}
+                  </p>
+                ) : null}
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-primary sidebar-footer-btn"
-              onClick={() => openAuthModal()}
-            >
-              Entrar
-            </button>
+            {authLoading ? (
+              <button
+                type="button"
+                className="btn btn-primary sidebar-footer-btn"
+                disabled
+              >
+                Carregando…
+              </button>
+            ) : authUser ? (
+              <div className="sidebar-footer-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary sidebar-footer-btn"
+                  disabled={syncStatus === 'syncing'}
+                  onClick={() => void runCloudSync()}
+                >
+                  {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline sidebar-footer-btn"
+                  onClick={() => void handleLogout()}
+                >
+                  Sair
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary sidebar-footer-btn"
+                onClick={() => openAuthModal()}
+              >
+                Entrar
+              </button>
+            )}
           </div>
         </footer>
       </aside>
@@ -1941,6 +2160,7 @@ function App() {
         open={authModalOpen}
         onRequestClose={requestCloseAuthModal}
         onBackdropTransitionEnd={handleAuthModalBackdropTransitionEnd}
+        onLoginStarted={requestCloseAuthModal}
       />
     </Fragment>
   )

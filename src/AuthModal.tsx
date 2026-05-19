@@ -1,13 +1,13 @@
 import { useEffect, useState, type TransitionEvent } from 'react'
 import { createPortal } from 'react-dom'
-
-type AuthProvider = 'google' | 'twitch'
+import { getOAuthStartUrl, type AuthProvider } from './lib/api'
 
 type AuthModalProps = {
   mounted: boolean
   open: boolean
   onRequestClose: () => void
   onBackdropTransitionEnd: (event: TransitionEvent<HTMLDivElement>) => void
+  onLoginStarted?: () => void
 }
 
 function IconGoogle() {
@@ -55,6 +55,7 @@ export function AuthModal({
   open,
   onRequestClose,
   onBackdropTransitionEnd,
+  onLoginStarted,
 }: AuthModalProps) {
   const [feedback, setFeedback] = useState('')
 
@@ -65,10 +66,14 @@ export function AuthModal({
 
   if (!mounted) return null
 
-  function handleProviderLogin(provider: AuthProvider) {
-    setFeedback(
-      `Login com ${provider === 'google' ? 'Google' : 'Twitch'} em breve. A sincronização na nuvem ainda não está disponível.`,
-    )
+  async function handleProviderLogin(provider: AuthProvider) {
+    try {
+      await chrome.tabs.create({ url: getOAuthStartUrl(provider) })
+      setFeedback('Conclua o login na aba que abriu. Esta página atualiza ao terminar.')
+      onLoginStarted?.()
+    } catch {
+      setFeedback('Não foi possível abrir a janela de login.')
+    }
   }
 
   return createPortal(
@@ -90,7 +95,7 @@ export function AuthModal({
           Sincronizar na nuvem
         </h2>
         <p id="auth-modal-desc" className="modal-body auth-modal-subtitle">
-          Entre com Google ou Twitch para manter seus grupos e abas sincronizados
+          Entre com Google ou Twitch para sincronizar seus grupos e abas na nuvem
           entre dispositivos. O login é opcional.
         </p>
 
@@ -98,7 +103,7 @@ export function AuthModal({
           <button
             type="button"
             className="auth-oauth-btn auth-oauth-btn--google"
-            onClick={() => handleProviderLogin('google')}
+            onClick={() => void handleProviderLogin('google')}
           >
             <span className="auth-oauth-btn-icon" aria-hidden>
               <IconGoogle />
@@ -108,7 +113,7 @@ export function AuthModal({
           <button
             type="button"
             className="auth-oauth-btn auth-oauth-btn--twitch"
-            onClick={() => handleProviderLogin('twitch')}
+            onClick={() => void handleProviderLogin('twitch')}
           >
             <span className="auth-oauth-btn-icon" aria-hidden>
               <IconTwitch />

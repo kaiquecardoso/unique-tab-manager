@@ -7,7 +7,11 @@ export default defineManifest({
   description:
     'Ao clicar no ícone, a aba atual é fechada e salva na lista. Gerencie tudo na página de opções.',
   permissions: ['storage', 'tabs', 'contextMenus', 'scripting', 'activeTab'],
-  host_permissions: ['<all_urls>'],
+  host_permissions: [
+    '<all_urls>',
+    'http://localhost:3000/*',
+    'ws://localhost:3000/*',
+  ],
   icons: {
     16: 'src/assets/logo.png',
     32: 'src/assets/logo.png',
