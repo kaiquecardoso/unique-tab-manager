@@ -570,6 +570,19 @@ function TabRow({
               >
                 {t.title}
               </div>
+              {simpleLayout ? (
+                <>
+                  <span className="tab-title-time-sep" aria-hidden>
+                    ·
+                  </span>
+                  <time
+                    className="tab-added tab-added--inline"
+                    dateTime={t.addedAt}
+                  >
+                    {formatTabAddedAt(t.addedAt)}
+                  </time>
+                </>
+              ) : null}
               <button
                 type="button"
                 className="tab-title-edit"
@@ -597,17 +610,19 @@ function TabRow({
                 </button>
               ) : null}
             </div>
-            <div className="tab-subline">
-              <span className="tab-host" title={host}>
-                {host}
-              </span>
-              <span className="tab-subline-sep" aria-hidden>
-                ·
-              </span>
-              <time className="tab-added" dateTime={t.addedAt}>
-                {formatTabAddedAt(t.addedAt)}
-              </time>
-            </div>
+            {!simpleLayout ? (
+              <div className="tab-subline">
+                <span className="tab-host" title={host}>
+                  {host}
+                </span>
+                <span className="tab-subline-sep" aria-hidden>
+                  ·
+                </span>
+                <time className="tab-added" dateTime={t.addedAt}>
+                  {formatTabAddedAt(t.addedAt)}
+                </time>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="tab-row-tags-field">
@@ -1585,6 +1600,58 @@ function App() {
 
         <section className="sidebar-preferences" aria-label="Preferências">
           <SidebarDropdownSection
+            id="appearance"
+            title="Aparência"
+            open={preferenceSectionsOpen.appearance}
+            onToggle={() => togglePreferenceSection('appearance')}
+          >
+              <div className="sidebar-toggle-row">
+                <span
+                  className="sidebar-toggle-row-label"
+                  id="theme-switch-label"
+                >
+                  Modo escuro
+                </span>
+                <button
+                  ref={themeSwitchRef}
+                  type="button"
+                  className="theme-switch"
+                  role="switch"
+                  aria-checked={darkMode}
+                  aria-labelledby="theme-switch-label"
+                  onClick={() => {
+                    void toggleThemeWithViewTransition(
+                      setDarkMode,
+                      !darkMode,
+                      themeSwitchRef.current,
+                    )
+                  }}
+                >
+                  <span className="theme-switch__knob" aria-hidden />
+                </button>
+              </div>
+              <div className="sidebar-section-divider" role="separator" aria-hidden />
+              <div className="sidebar-toggle-row">
+                <span
+                  className="sidebar-toggle-row-label"
+                  id="compact-mode-switch-label"
+                >
+                  Modo compacto
+                </span>
+                <button
+                  type="button"
+                  className="theme-switch"
+                  role="switch"
+                  aria-checked={simpleLayout}
+                  aria-labelledby="compact-mode-switch-label"
+                  onClick={() => setSimpleLayout((v) => !v)}
+                >
+                  <span className="theme-switch__knob" aria-hidden />
+                </button>
+              </div>
+          </SidebarDropdownSection>
+
+          <SidebarDropdownSection
             id="backup"
             title="Backup"
             open={preferenceSectionsOpen.backup}
@@ -1643,61 +1710,19 @@ function App() {
               <p className="sidebar-section-footnote">{groupsImportStatus}</p>
             ) : null}
           </SidebarDropdownSection>
-
-          <SidebarDropdownSection
-            id="appearance"
-            title="Aparência"
-            open={preferenceSectionsOpen.appearance}
-            onToggle={() => togglePreferenceSection('appearance')}
-          >
-              <div className="sidebar-toggle-row">
-                <span
-                  className="sidebar-toggle-row-label"
-                  id="theme-switch-label"
-                >
-                  Modo escuro
-                </span>
-                <button
-                  ref={themeSwitchRef}
-                  type="button"
-                  className="theme-switch"
-                  role="switch"
-                  aria-checked={darkMode}
-                  aria-labelledby="theme-switch-label"
-                  onClick={() => {
-                    void toggleThemeWithViewTransition(
-                      setDarkMode,
-                      !darkMode,
-                      themeSwitchRef.current,
-                    )
-                  }}
-                >
-                  <span className="theme-switch__knob" aria-hidden />
-                </button>
-              </div>
-              <div className="sidebar-section-divider" role="separator" aria-hidden />
-              <div className="sidebar-toggle-row">
-                <span
-                  className="sidebar-toggle-row-label"
-                  id="simple-layout-switch-label"
-                >
-                  Layout simples
-                </span>
-                <button
-                  type="button"
-                  className="theme-switch"
-                  role="switch"
-                  aria-checked={simpleLayout}
-                  aria-labelledby="simple-layout-switch-label"
-                  onClick={() => setSimpleLayout((v) => !v)}
-                >
-                  <span className="theme-switch__knob" aria-hidden />
-                </button>
-              </div>
-          </SidebarDropdownSection>
         </section>
 
         <div className="sidebar-actions">
+          {authUser && !authLoading ? (
+            <button
+              type="button"
+              className="btn btn-primary sidebar-footer-btn"
+              disabled={syncStatus === 'syncing'}
+              onClick={() => void runCloudSync()}
+            >
+              {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-outline btn-danger"
@@ -1733,9 +1758,6 @@ function App() {
                 </span>
               )}
               <div className="sidebar-footer-copy">
-                <span className="sidebar-footer-badge">
-                  {authUser ? 'Conectado' : 'Opcional'}
-                </span>
                 <p className="sidebar-footer-title">
                   {authUser ? authUser.name : 'Sincronizar na nuvem'}
                 </p>
@@ -1761,23 +1783,13 @@ function App() {
                 Carregando…
               </button>
             ) : authUser ? (
-              <div className="sidebar-footer-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary sidebar-footer-btn"
-                  disabled={syncStatus === 'syncing'}
-                  onClick={() => void runCloudSync()}
-                >
-                  {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline sidebar-footer-btn"
-                  onClick={() => void handleLogout()}
-                >
-                  Sair
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-outline sidebar-footer-btn"
+                onClick={() => void handleLogout()}
+              >
+                Sair
+              </button>
             ) : (
               <button
                 type="button"
