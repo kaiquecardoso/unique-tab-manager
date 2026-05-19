@@ -1,4 +1,4 @@
-import { AUTH_TOKEN_STORAGE_KEY, setStoredToken } from './api'
+import { setStoredToken } from './api'
 
 const EXTENSION_CALLBACK_PATH = '/auth/extension-callback'
 
@@ -34,14 +34,5 @@ export function registerAuthTabListener(): void {
         /* nenhum listener (ex.: options fechada) */
       }
     })()
-  })
-
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[AUTH_TOKEN_STORAGE_KEY]) return
-    try {
-      void chrome.runtime.sendMessage({ type: 'auth-success' })
-    } catch {
-      /* sem listeners */
-    }
   })
 }

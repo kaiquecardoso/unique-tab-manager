@@ -43,6 +43,19 @@ async function setSyncMeta(meta: PreferencesSyncMeta): Promise<void> {
   await chrome.storage.local.set({ [PREFERENCES_SYNC_META_KEY]: meta })
 }
 
+function preferencesEqual(a: UserPreferences, b: UserPreferences): boolean {
+  const normalize = (p: UserPreferences) =>
+    JSON.stringify({
+      theme: p.theme,
+      simpleLayout: p.simpleLayout,
+      search: p.search,
+      activeTagFilters: [...p.activeTagFilters].sort(),
+      groupDateRange: p.groupDateRange ?? null,
+    })
+
+  return normalize(a) === normalize(b)
+}
+
 export async function fetchCloudPreferences(): Promise<PreferencesCloudPayload> {
   const headers = await authHeaders()
   if (!headers) throw new Error('Não autenticado')
@@ -121,6 +134,15 @@ export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
     !remote.preferences.search &&
     remote.preferences.activeTagFilters.length === 0 &&
     !remote.preferences.groupDateRange
+
+  if (preferencesEqual(local, remote.preferences)) {
+    await saveLocalPreferences(remote.preferences)
+    await setSyncMeta({
+      localUpdatedAt: remote.updatedAt,
+      serverUpdatedAt: remote.updatedAt,
+    })
+    return remote.preferences
+  }
 
   let result: UserPreferences
 

@@ -14,11 +14,24 @@ import { ptBR } from 'date-fns/locale'
 import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
 import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
-import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
+import {
+  findOpenBrowserTab,
+  focusBrowserTab,
+  tabUrlsMatch,
+} from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import { AuthModal } from './AuthModal'
-import { formatSubscriptionLabel, redeemAccessKey } from './lib/subscription'
+import { isBillingEnabled } from './lib/billing'
+import { PlanBadge } from './components/PlanBadge'
+import { RedeemKeyForm } from './components/RedeemKeyForm'
+import {
+  fetchSubscriptionStatus,
+  formatSubscriptionLabel,
+  hasCloudAccess,
+  redeemAccessKey,
+  type SubscriptionStatus,
+} from './lib/subscription'
 import {
   AUTH_TOKEN_STORAGE_KEY,
   clearStoredToken,
@@ -777,6 +790,8 @@ function App() {
   const [simpleLayout, setSimpleLayout] = useState(false)
   const prefsHydratedRef = useRef(false)
   const skipPrefsPushRef = useRef(false)
+  const cloudSyncInProgressRef = useRef(false)
+  const authRefreshInFlightRef = useRef<Promise<void> | null>(null)
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
     appearance: false,
@@ -811,6 +826,9 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const authModalOpenRef = useRef(false)
   const [authUser, setAuthUser] = useState<PublicUser | null>(null)
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(
+    null,
+  )
   const [authLoading, setAuthLoading] = useState(true)
   const [licenseKeyInput, setLicenseKeyInput] = useState('')
   const [licenseKeyBusy, setLicenseKeyBusy] = useState(false)
@@ -976,7 +994,13 @@ function App() {
   }, [applyPreferences])
 
   useEffect(() => {
-    if (!prefsHydratedRef.current || skipPrefsPushRef.current) return
+    if (
+      !prefsHydratedRef.current ||
+      skipPrefsPushRef.current ||
+      cloudSyncInProgressRef.current
+    ) {
+      return
+    }
 
     const prefs: UserPreferences = {
       theme: darkMode ? 'dark' : 'light',
@@ -999,54 +1023,89 @@ function App() {
     groupDateRange,
   ])
 
-  const runCloudSync = useCallback(async () => {
-    const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
-    if (!token[AUTH_TOKEN_STORAGE_KEY]) return
+  const runCloudSync = useCallback(
+    async (sessionSubscription?: SubscriptionStatus | null) => {
+      const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
+      if (!token[AUTH_TOKEN_STORAGE_KEY]) return
 
-    const session = await fetchCurrentUser()
-    if (!session?.subscription?.cloudEnabled) {
-      setSyncStatus('error')
-      setSyncMessage('Ative o plano Pro com uma chave para sincronizar na nuvem')
-      return
-    }
+      if (isBillingEnabled) {
+        const sub =
+          sessionSubscription === undefined
+            ? await fetchSubscriptionStatus()
+            : sessionSubscription
+        if (!hasCloudAccess(sub)) {
+          setSyncStatus('error')
+          setSyncMessage(
+            'Ative o plano Pro com uma chave para sincronizar na nuvem',
+          )
+          return
+        }
+      }
 
-    setSyncStatus('syncing')
-    setSyncMessage('Sincronizando…')
-    try {
-      const [merged, prefs] = await Promise.all([
-        syncGroupsWithCloud(),
-        syncPreferencesWithCloud(),
-      ])
-      setGroups(sortGroupsList(merged))
-      applyPreferences(prefs)
-      setSyncStatus('ok')
-      setSyncMessage('Sincronizado em tempo real')
-    } catch {
-      setSyncStatus('error')
-      setSyncMessage('Falha ao sincronizar')
-    }
-  }, [applyPreferences])
+      setSyncStatus('syncing')
+      setSyncMessage('Sincronizando…')
+      cloudSyncInProgressRef.current = true
+      try {
+        const [merged, prefs] = await Promise.all([
+          syncGroupsWithCloud(),
+          syncPreferencesWithCloud(),
+        ])
+        setGroups(sortGroupsList(merged))
+        applyPreferences(prefs)
+        setSyncStatus('ok')
+        setSyncMessage('Sincronizado em tempo real')
+      } catch {
+        setSyncStatus('error')
+        setSyncMessage('Falha ao sincronizar')
+      } finally {
+        cloudSyncInProgressRef.current = false
+      }
+    },
+    [applyPreferences],
+  )
 
   const refreshAuthSession = useCallback(async () => {
-    setAuthLoading(true)
-    try {
-      const user = await fetchCurrentUser()
-      setAuthUser(user)
-      if (user?.subscription?.cloudEnabled) {
-        await runCloudSync()
-      } else if (user) {
-        setSyncStatus('idle')
-        setSyncMessage('Plano gratuito — use uma chave Pro para nuvem')
-      } else {
+    if (authRefreshInFlightRef.current) {
+      return authRefreshInFlightRef.current
+    }
+
+    const refreshPromise = (async () => {
+      setAuthLoading(true)
+      try {
+        const user = await fetchCurrentUser()
+        setAuthUser(user)
+        let sub: SubscriptionStatus | null = null
+        if (user && isBillingEnabled) {
+          sub = await fetchSubscriptionStatus()
+          setSubscription(sub)
+        } else {
+          setSubscription(null)
+        }
+        if (user && (!isBillingEnabled || hasCloudAccess(sub))) {
+          await runCloudSync(sub)
+        } else if (user) {
+          setSyncStatus('idle')
+          setSyncMessage('Plano gratuito — use uma chave Pro para nuvem')
+        } else {
+          setSyncStatus('idle')
+          setSyncMessage('')
+        }
+      } catch {
+        setAuthUser(null)
         setSyncStatus('idle')
         setSyncMessage('')
+      } finally {
+        setAuthLoading(false)
       }
-    } catch {
-      setAuthUser(null)
-      setSyncStatus('idle')
-      setSyncMessage('')
+    })()
+
+    authRefreshInFlightRef.current = refreshPromise
+    try {
+      await refreshPromise
     } finally {
-      setAuthLoading(false)
+      if (authRefreshInFlightRef.current === refreshPromise) {
+        authRefreshInFlightRef.current = null
+      }
     }
   }, [runCloudSync])
 
@@ -1063,7 +1122,6 @@ function App() {
       if (!message || typeof message !== 'object' || !('type' in message)) return
 
       if (message.type === 'auth-success') {
-        void refreshAuthSession()
         requestCloseAuthModal()
         return
       }
@@ -1211,13 +1269,14 @@ function App() {
     setLicenseKeyBusy(true)
     setSyncMessage('')
     try {
-      const user = await redeemAccessKey(code)
+      const { user, subscription: sub } = await redeemAccessKey(code)
       setAuthUser(user)
+      setSubscription(sub)
       setLicenseKeyInput('')
       setSyncStatus('ok')
       setSyncMessage('Plano Pro ativado')
-      if (user.subscription?.cloudEnabled) {
-        await runCloudSync()
+      if (hasCloudAccess(sub)) {
+        await runCloudSync(sub)
       }
     } catch (error) {
       setSyncStatus('error')
@@ -1234,6 +1293,7 @@ function App() {
       'oneTabPreferencesSyncV1',
     ])
     setAuthUser(null)
+    setSubscription(null)
     setSyncStatus('idle')
     setSyncMessage('')
   }
@@ -1514,9 +1574,34 @@ function App() {
     )
   }
 
-  async function openGroupTabs(tabs: SavedTab[]) {
-    for (const [index, tab] of tabs.entries()) {
-      await chrome.tabs.create({ url: tab.url, active: index === 0 })
+  async function openGroupTabs(groupId: string, tabs: SavedTab[]) {
+    const unviewed = tabs.filter((t) => !t.viewed)
+    if (unviewed.length === 0) return
+
+    const unviewedIds = new Set(unviewed.map((t) => t.id))
+    persist(
+      groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              tabs: g.tabs.map((tab) =>
+                unviewedIds.has(tab.id) ? { ...tab, viewed: true } : tab,
+              ),
+            },
+      ),
+    )
+
+    const openBrowserTabs = await chrome.tabs.query({})
+    let activateNext = true
+    for (const tab of unviewed) {
+      const alreadyOpen = openBrowserTabs.some(
+        (t) => typeof t.url === 'string' && tabUrlsMatch(tab.url, t.url),
+      )
+      if (alreadyOpen) continue
+
+      await chrome.tabs.create({ url: tab.url, active: activateNext })
+      activateNext = false
     }
   }
 
@@ -1749,7 +1834,9 @@ function App() {
         </section>
 
         <div className="sidebar-actions">
-          {authUser && !authLoading && authUser.subscription?.cloudEnabled ? (
+          {authUser &&
+          !authLoading &&
+          (!isBillingEnabled || hasCloudAccess(subscription)) ? (
             <button
               type="button"
               className="btn btn-primary sidebar-footer-btn"
@@ -1794,36 +1881,25 @@ function App() {
                 </span>
               )}
               <div className="sidebar-footer-copy">
-                <p className="sidebar-footer-title">
-                  {authUser ? authUser.name : 'Sincronizar na nuvem'}
-                </p>
-                {authUser ? (
-                  <p className="sidebar-footer-subtitle">
-                    {authUser.subscription
-                      ? formatSubscriptionLabel(authUser.subscription)
-                      : authUser.email}
+                <div className="sidebar-footer-title-row">
+                  <p className="sidebar-footer-title">
+                    {authUser ? authUser.name : 'Sincronizar na nuvem'}
                   </p>
-                ) : null}
-                {authUser && !authUser.subscription?.cloudEnabled ? (
-                  <div className="sidebar-footer-license">
-                    <input
-                      type="text"
-                      className="sidebar-footer-license-input"
-                      placeholder="Chave Pro (OTM-…)"
-                      value={licenseKeyInput}
-                      onChange={(e) => setLicenseKeyInput(e.target.value)}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-primary sidebar-footer-btn"
-                      disabled={licenseKeyBusy || !licenseKeyInput.trim()}
-                      onClick={() => void handleRedeemLicenseKey()}
-                    >
-                      {licenseKeyBusy ? 'Ativando…' : 'Ativar chave'}
-                    </button>
-                  </div>
+                  {authUser && isBillingEnabled && subscription ? (
+                    <PlanBadge subscription={subscription} />
+                  ) : null}
+                </div>
+                {authUser ? (
+                  <>
+                    <p className="sidebar-footer-subtitle">{authUser.email}</p>
+                    {isBillingEnabled &&
+                    subscription &&
+                    hasCloudAccess(subscription) ? (
+                      <p className="sidebar-footer-plan-detail">
+                        {formatSubscriptionLabel(subscription)}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
                 {authUser && syncMessage ? (
                   <p
@@ -1835,6 +1911,16 @@ function App() {
                 ) : null}
               </div>
             </div>
+            {isBillingEnabled &&
+            authUser &&
+            !hasCloudAccess(subscription) ? (
+              <RedeemKeyForm
+                value={licenseKeyInput}
+                busy={licenseKeyBusy}
+                onChange={setLicenseKeyInput}
+                onSubmit={() => void handleRedeemLicenseKey()}
+              />
+            ) : null}
             {authLoading ? (
               <button
                 type="button"
@@ -1989,11 +2075,11 @@ function App() {
                       <button
                         type="button"
                         className="group-tool-btn"
-                        aria-label="Abrir todas as abas do grupo"
-                        title="Abrir todas as abas do grupo"
+                        aria-label="Abrir abas não vistas do grupo"
+                        title="Abrir abas não vistas do grupo"
                         onClick={(e) => {
                           e.stopPropagation()
-                          void openGroupTabs(g.tabs)
+                          void openGroupTabs(g.id, g.tabs)
                         }}
                       >
                         <IconOpenTabs />

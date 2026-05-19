@@ -1234,10 +1234,48 @@ html[data-theme='dark'] .group-tool-btn:hover {
 .sidebar-footer-copy {
   display: flex;
   flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sidebar-footer-title-row {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  min-width: 0;
+  gap: 8px;
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+.plan-badge--pro {
+  color: #0d3d2a;
+  background: color-mix(in srgb, #00c896 28%, transparent);
+  border: 1px solid color-mix(in srgb, #00c896 45%, transparent);
+}
+
+.plan-badge--free {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  border: 1px solid var(--border-subtle);
+}
+
+.sidebar-footer-plan-detail {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--accent) 75%, var(--text-muted));
 }
 
 .sidebar-footer-title {
@@ -1678,17 +1716,25 @@ html[data-theme='dark'] .modal-dialog {
   max-width: none;
 }
 
-.sidebar-footer-license {
+.redeem-key-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 10px;
   width: 100%;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.sidebar-footer-license-input {
+.redeem-key-form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.redeem-key-form-input {
   width: 100%;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
   background: var(--surface);
@@ -1697,9 +1743,18 @@ html[data-theme='dark'] .modal-dialog {
   font-family: inherit;
 }
 
-.sidebar-footer-license-input:focus {
+.redeem-key-form-input:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
   outline-offset: 1px;
+}
+
+.redeem-key-form-input:disabled {
+  opacity: 0.65;
+}
+
+.redeem-key-form-submit {
+  width: 100%;
+  min-height: 40px;
 }
 
 @media (max-width: 900px) {

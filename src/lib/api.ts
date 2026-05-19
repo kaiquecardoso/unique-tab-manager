@@ -14,7 +14,7 @@ export type PublicUser = {
   photo: string | null
   provider: string
   createdAt: string
-  subscription?: SubscriptionStatus
+  isAdmin?: boolean
 }
 
 const DEFAULT_API_URL = 'http://localhost:3000'

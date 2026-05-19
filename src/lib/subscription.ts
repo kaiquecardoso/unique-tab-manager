@@ -1,8 +1,56 @@
-import { getApiUrl, getStoredToken, type PublicUser } from './api'
+import {
+  clearStoredToken,
+  getApiUrl,
+  getStoredToken,
+  type PublicUser,
+  type SubscriptionStatus,
+} from './api'
 
-export type SubscriptionStatus = NonNullable<PublicUser['subscription']>
+export type { SubscriptionStatus }
 
-export async function redeemAccessKey(code: string): Promise<PublicUser> {
+export const FREE_SUBSCRIPTION: SubscriptionStatus = {
+  plan: 'free',
+  proExpiresAt: null,
+  isLifetime: false,
+  cloudEnabled: false,
+}
+
+export async function fetchSubscriptionStatus(): Promise<SubscriptionStatus> {
+  const token = await getStoredToken()
+  if (!token) return FREE_SUBSCRIPTION
+
+  const response = await fetch(`${getApiUrl()}/subscription`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.status === 401) {
+    await clearStoredToken()
+    return FREE_SUBSCRIPTION
+  }
+
+  if (!response.ok) {
+    throw new Error('Não foi possível carregar o plano.')
+  }
+
+  const data = (await response.json()) as
+    | SubscriptionStatus
+    | { subscription: SubscriptionStatus }
+
+  if ('subscription' in data && data.subscription) {
+    return data.subscription
+  }
+
+  return data as SubscriptionStatus
+}
+
+export type RedeemAccessKeyResult = {
+  user: PublicUser
+  subscription: SubscriptionStatus
+}
+
+export async function redeemAccessKey(code: string): Promise<RedeemAccessKeyResult> {
   const token = await getStoredToken()
   if (!token) {
     throw new Error('Faça login antes de resgatar uma chave.')
@@ -17,7 +65,11 @@ export async function redeemAccessKey(code: string): Promise<PublicUser> {
     body: JSON.stringify({ code }),
   })
 
-  const data = (await response.json()) as { message?: string; user?: PublicUser }
+  const data = (await response.json()) as {
+    message?: string
+    user?: PublicUser
+    subscription?: SubscriptionStatus
+  }
 
   if (!response.ok) {
     throw new Error(data.message ?? 'Não foi possível resgatar a chave.')
@@ -27,7 +79,10 @@ export async function redeemAccessKey(code: string): Promise<PublicUser> {
     throw new Error('Resposta inválida do servidor.')
   }
 
-  return data.user
+  const subscription =
+    data.subscription ?? (await fetchSubscriptionStatus())
+
+  return { user: data.user, subscription }
 }
 
 export function formatSubscriptionLabel(subscription: SubscriptionStatus): string {
@@ -42,4 +97,10 @@ export function formatSubscriptionLabel(subscription: SubscriptionStatus): strin
     return `Pro até ${date}`
   }
   return 'Pro'
+}
+
+export function hasCloudAccess(
+  subscription: SubscriptionStatus | null | undefined,
+): boolean {
+  return subscription?.cloudEnabled === true
 }
