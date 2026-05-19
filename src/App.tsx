@@ -18,6 +18,7 @@ import { findOpenBrowserTab, focusBrowserTab } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import { AuthModal } from './AuthModal'
+import { formatSubscriptionLabel, redeemAccessKey } from './lib/subscription'
 import {
   AUTH_TOKEN_STORAGE_KEY,
   clearStoredToken,
@@ -811,6 +812,8 @@ function App() {
   const authModalOpenRef = useRef(false)
   const [authUser, setAuthUser] = useState<PublicUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [licenseKeyInput, setLicenseKeyInput] = useState('')
+  const [licenseKeyBusy, setLicenseKeyBusy] = useState(false)
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
   const [redirectAction, setRedirectAction] =
@@ -1000,6 +1003,13 @@ function App() {
     const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
     if (!token[AUTH_TOKEN_STORAGE_KEY]) return
 
+    const session = await fetchCurrentUser()
+    if (!session?.subscription?.cloudEnabled) {
+      setSyncStatus('error')
+      setSyncMessage('Ative o plano Pro com uma chave para sincronizar na nuvem')
+      return
+    }
+
     setSyncStatus('syncing')
     setSyncMessage('Sincronizando…')
     try {
@@ -1022,8 +1032,11 @@ function App() {
     try {
       const user = await fetchCurrentUser()
       setAuthUser(user)
-      if (user) {
+      if (user?.subscription?.cloudEnabled) {
         await runCloudSync()
+      } else if (user) {
+        setSyncStatus('idle')
+        setSyncMessage('Plano gratuito — use uma chave Pro para nuvem')
       } else {
         setSyncStatus('idle')
         setSyncMessage('')
@@ -1189,6 +1202,29 @@ function App() {
 
   function openAuthModal() {
     setAuthModalMounted(true)
+  }
+
+  async function handleRedeemLicenseKey() {
+    const code = licenseKeyInput.trim()
+    if (!code) return
+
+    setLicenseKeyBusy(true)
+    setSyncMessage('')
+    try {
+      const user = await redeemAccessKey(code)
+      setAuthUser(user)
+      setLicenseKeyInput('')
+      setSyncStatus('ok')
+      setSyncMessage('Plano Pro ativado')
+      if (user.subscription?.cloudEnabled) {
+        await runCloudSync()
+      }
+    } catch (error) {
+      setSyncStatus('error')
+      setSyncMessage(error instanceof Error ? error.message : 'Falha ao resgatar chave')
+    } finally {
+      setLicenseKeyBusy(false)
+    }
   }
 
   async function handleLogout() {
@@ -1713,7 +1749,7 @@ function App() {
         </section>
 
         <div className="sidebar-actions">
-          {authUser && !authLoading ? (
+          {authUser && !authLoading && authUser.subscription?.cloudEnabled ? (
             <button
               type="button"
               className="btn btn-primary sidebar-footer-btn"
@@ -1762,7 +1798,32 @@ function App() {
                   {authUser ? authUser.name : 'Sincronizar na nuvem'}
                 </p>
                 {authUser ? (
-                  <p className="sidebar-footer-subtitle">{authUser.email}</p>
+                  <p className="sidebar-footer-subtitle">
+                    {authUser.subscription
+                      ? formatSubscriptionLabel(authUser.subscription)
+                      : authUser.email}
+                  </p>
+                ) : null}
+                {authUser && !authUser.subscription?.cloudEnabled ? (
+                  <div className="sidebar-footer-license">
+                    <input
+                      type="text"
+                      className="sidebar-footer-license-input"
+                      placeholder="Chave Pro (OTM-…)"
+                      value={licenseKeyInput}
+                      onChange={(e) => setLicenseKeyInput(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary sidebar-footer-btn"
+                      disabled={licenseKeyBusy || !licenseKeyInput.trim()}
+                      onClick={() => void handleRedeemLicenseKey()}
+                    >
+                      {licenseKeyBusy ? 'Ativando…' : 'Ativar chave'}
+                    </button>
+                  </div>
                 ) : null}
                 {authUser && syncMessage ? (
                   <p

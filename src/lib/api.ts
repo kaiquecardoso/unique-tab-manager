@@ -1,5 +1,12 @@
 export const AUTH_TOKEN_STORAGE_KEY = 'oneTabAuthTokenV1'
 
+export type SubscriptionStatus = {
+  plan: 'free' | 'pro'
+  proExpiresAt: string | null
+  isLifetime: boolean
+  cloudEnabled: boolean
+}
+
 export type PublicUser = {
   id: string
   email: string
@@ -7,6 +14,7 @@ export type PublicUser = {
   photo: string | null
   provider: string
   createdAt: string
+  subscription?: SubscriptionStatus
 }
 
 const DEFAULT_API_URL = 'http://localhost:3000'
