@@ -8,6 +8,8 @@ export type SavedTab = {
   tags: string[]
   /** Usuário já abriu esta aba salva pelo item da lista. */
   viewed?: boolean
+  /** Marcada como favorita (aparece na aba Favoritos). */
+  favorite?: boolean
 }
 
 export type TabGroup = {

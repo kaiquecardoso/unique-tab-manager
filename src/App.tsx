@@ -12,6 +12,17 @@ import type { DateRange } from 'react-day-picker'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
+import {
+  loadTrash,
+  saveTrash,
+  sortTrashEntries,
+  TRASH_STORAGE_KEY,
+} from './lib/trashStorage'
+import {
+  createTrashedGroup,
+  createTrashedTab,
+  restoreTrashedEntry,
+} from './lib/trashOps'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
 import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
 import {
@@ -60,6 +71,7 @@ import {
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
+import type { TrashedEntry } from './types/trash'
 import './App.css'
 
 function faviconUrl(url: string): string {
@@ -329,6 +341,34 @@ function IconTrash() {
   )
 }
 
+function IconStar({ filled }: { filled: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+      <path
+        d="M12 3.5l2.35 4.76 5.25.77-3.8 3.7.9 5.23L12 15.9l-4.7 2.46.9-5.23-3.8-3.7 5.25-.77L12 3.5z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconRestore() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 10a9 9 0 1 1 2.4 6M3 10V4m0 6h6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function IconDownload() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -475,6 +515,10 @@ function TabRow({
   onClearViewed,
   onSetTags,
   existingTagOptions,
+  showFavorite = false,
+  onToggleFavorite,
+  tagsReadOnly = false,
+  removeLabel = 'Mover para a lixeira',
 }: {
   tab: SavedTab
   simpleLayout: boolean
@@ -485,6 +529,10 @@ function TabRow({
   onSetTags: (tags: string[]) => void
   /** Tags já usadas em alguma aba (ordenadas), sugeridas no mesmo campo de nova tag. */
   existingTagOptions: string[]
+  showFavorite?: boolean
+  onToggleFavorite?: () => void
+  tagsReadOnly?: boolean
+  removeLabel?: string
 }) {
   const tagDropdownId = useId()
   const tagPickerRef = useRef<HTMLSpanElement>(null)
@@ -643,20 +691,23 @@ function TabRow({
           {t.tags.map((tag) => (
             <span key={tag} className="tab-chip">
               {tag}
-              <button
-                type="button"
-                className="tab-chip-remove"
-                aria-label={`Remover tag ${tag}`}
-                title={`Remover tag ${tag}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSetTags(t.tags.filter((x) => x !== tag))
-                }}
-              >
-                ×
-              </button>
+              {!tagsReadOnly ? (
+                <button
+                  type="button"
+                  className="tab-chip-remove"
+                  aria-label={`Remover tag ${tag}`}
+                  title={`Remover tag ${tag}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSetTags(t.tags.filter((x) => x !== tag))
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
             </span>
           ))}
+          {!tagsReadOnly ? (
           <span
             ref={tagPickerRef}
             className={
@@ -733,12 +784,31 @@ function TabRow({
               </>
             ) : null}
           </span>
+          ) : null}
         </div>
+        {showFavorite && onToggleFavorite ? (
+          <button
+            type="button"
+            className={`tab-row-favorite${t.favorite ? ' tab-row-favorite--on' : ''}`}
+            aria-label={
+              t.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'
+            }
+            title={
+              t.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFavorite()
+            }}
+          >
+            <IconStar filled={t.favorite === true} />
+          </button>
+        ) : null}
         <button
           type="button"
           className="tab-row-delete"
-          aria-label="Remover aba salva"
-          title="Remover aba salva"
+          aria-label={removeLabel}
+          title={removeLabel}
           onClick={(e) => {
             e.stopPropagation()
             onRequestRemove()
@@ -751,10 +821,14 @@ function TabRow({
   )
 }
 
+type MainView = 'saved' | 'favorites' | 'trash'
+
 type ConfirmDeleteAction =
   | { variant: 'all' }
   | { variant: 'group'; groupId: string }
   | { variant: 'tab'; groupId: string; tabId: string }
+  | { variant: 'trash-entry'; trashId: string }
+  | { variant: 'trash-all' }
 
 type EditTabTitleAction = {
   groupId: string
@@ -777,8 +851,18 @@ type GroupsExportFile = {
 
 const GROUPS_EXPORT_VERSION = 1
 
+const MAIN_VIEWS = ['saved', 'favorites', 'trash'] as const satisfies readonly MainView[]
+
+const MAIN_VIEW_LABELS: Record<MainView, string> = {
+  saved: 'Abas Salvas',
+  favorites: 'Favoritos',
+  trash: 'Lixeira',
+}
+
 function App() {
   const [groups, setGroups] = useState<TabGroup[]>([])
+  const [trash, setTrash] = useState<TrashedEntry[]>([])
+  const [mainView, setMainView] = useState<MainView>('saved')
   const [ready, setReady] = useState(false)
   const [search, setSearch] = useState('')
   const [activeTagFilters, setActiveTagFilters] = useState<string[]>([])
@@ -857,24 +941,38 @@ function App() {
     switch (confirmAction?.variant) {
       case 'all':
         return {
-          title: 'Excluir tudo?',
+          title: 'Mover tudo para a lixeira?',
           body:
-            'Tem certeza de que deseja remover todos os grupos e abas salvas? Esta ação não pode ser desfeita.',
-          confirmLabel: 'Excluir tudo',
+            'Todos os grupos e abas salvas serão movidos para a lixeira. Você poderá restaurá-los depois.',
+          confirmLabel: 'Mover para a lixeira',
         }
       case 'group':
         return {
-          title: 'Excluir este grupo?',
+          title: 'Mover grupo para a lixeira?',
           body:
-            'Tem certeza? Todas as abas salvas neste grupo serão removidas. Esta ação não pode ser desfeita.',
-          confirmLabel: 'Excluir grupo',
+            'Todas as abas deste grupo serão movidas para a lixeira. Você poderá restaurá-las depois.',
+          confirmLabel: 'Mover para a lixeira',
         }
       case 'tab':
         return {
-          title: 'Remover esta aba?',
+          title: 'Mover aba para a lixeira?',
           body:
-            'A aba será removida apenas da lista salva. Esta ação não pode ser desfeita.',
-          confirmLabel: 'Remover aba',
+            'A aba sairá da lista salva e ficará na lixeira até você restaurar ou apagar de vez.',
+          confirmLabel: 'Mover para a lixeira',
+        }
+      case 'trash-entry':
+        return {
+          title: 'Apagar permanentemente?',
+          body:
+            'Este item será removido da lixeira e não poderá ser recuperado.',
+          confirmLabel: 'Apagar permanentemente',
+        }
+      case 'trash-all':
+        return {
+          title: 'Esvaziar lixeira?',
+          body:
+            'Todos os itens da lixeira serão apagados permanentemente. Esta ação não pode ser desfeita.',
+          confirmLabel: 'Esvaziar lixeira',
         }
       default:
         return {
@@ -901,6 +999,12 @@ function App() {
     },
     [authUser],
   )
+
+  const persistTrash = useCallback((next: TrashedEntry[]) => {
+    const sorted = sortTrashEntries(next)
+    setTrash(sorted)
+    void saveTrash(sorted)
+  }, [])
 
   useEffect(() => {
     if (
@@ -1110,8 +1214,9 @@ function App() {
   }, [runCloudSync])
 
   useEffect(() => {
-    void loadGroups().then((loaded) => {
+    void Promise.all([loadGroups(), loadTrash()]).then(([loaded, loadedTrash]) => {
       setGroups(sortGroupsList(loaded))
+      setTrash(sortTrashEntries(loadedTrash))
       setReady(true)
     })
     void refreshAuthSession()
@@ -1168,6 +1273,13 @@ function App() {
         const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
         if (Array.isArray(next)) {
           setGroups(sortGroupsList(normalizeAllGroups(next)))
+        }
+      }
+
+      if (changes[TRASH_STORAGE_KEY]) {
+        const next = changes[TRASH_STORAGE_KEY].newValue as TrashedEntry[] | undefined
+        if (Array.isArray(next)) {
+          setTrash(sortTrashEntries(next))
         }
       }
 
@@ -1415,15 +1527,53 @@ function App() {
     [tabsByDayMap],
   )
 
+  const favoriteGroups = useMemo(
+    () =>
+      groups
+        .map((g) => ({
+          ...g,
+          tabs: g.tabs.filter((t) => t.favorite === true),
+        }))
+        .filter((g) => g.tabs.length > 0),
+    [groups],
+  )
+
+  const listSource = useMemo(() => {
+    if (mainView === 'favorites') return sortGroupsList(favoriteGroups)
+    return orderedGroups
+  }, [mainView, favoriteGroups, orderedGroups])
+
   const visible = useMemo(
     () =>
-      filterGroups(orderedGroups, search, activeTagSet, groupDateRange),
-    [orderedGroups, search, activeTagSet, groupDateRange],
+      filterGroups(
+        listSource,
+        search,
+        activeTagSet,
+        mainView === 'saved' ? groupDateRange : undefined,
+      ),
+    [listSource, search, activeTagSet, groupDateRange, mainView],
   )
 
   const visibleTabs = useMemo(
     () => visible.reduce((n, g) => n + g.tabs.length, 0),
     [visible],
+  )
+
+  const visibleTrash = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return trash
+    return trash.filter((entry) =>
+      entry.group.tabs.some(
+        (t) =>
+          t.title.toLowerCase().includes(needle) ||
+          t.url.toLowerCase().includes(needle),
+      ),
+    )
+  }, [trash, search])
+
+  const trashTabCount = useMemo(
+    () => trash.reduce((n, e) => n + e.group.tabs.length, 0),
+    [trash],
   )
 
   function setTabTags(groupId: string, tabId: string, tags: string[]) {
@@ -1544,24 +1694,76 @@ function App() {
     persist(next)
   }
 
+  function toggleTrashExpanded(trashId: string) {
+    persistTrash(
+      trash.map((e) =>
+        e.id !== trashId
+          ? e
+          : { ...e, group: { ...e.group, expanded: !e.group.expanded } },
+      ),
+    )
+  }
+
   function executeConfirmDelete() {
     const a = confirmAction
     if (!a) return
     if (a.variant === 'all') {
+      persistTrash([...groups.map(createTrashedGroup), ...trash])
       persist([])
     } else if (a.variant === 'group') {
+      const group = groups.find((g) => g.id === a.groupId)
+      if (group) {
+        persistTrash([createTrashedGroup(group), ...trash])
+      }
       persist(groups.filter((g) => g.id !== a.groupId))
-    } else {
+    } else if (a.variant === 'tab') {
+      const group = groups.find((g) => g.id === a.groupId)
+      const tab = group?.tabs.find((t) => t.id === a.tabId)
+      if (group && tab) {
+        persistTrash([createTrashedTab(group, tab), ...trash])
+      }
       const next = groups
         .map((g) =>
           g.id === a.groupId
-            ? { ...g, tabs: g.tabs.filter((tab) => tab.id !== a.tabId) }
+            ? { ...g, tabs: g.tabs.filter((t) => t.id !== a.tabId) }
             : g,
         )
         .filter((g) => g.tabs.length > 0)
       persist(next)
+    } else if (a.variant === 'trash-entry') {
+      persistTrash(trash.filter((e) => e.id !== a.trashId))
+    } else if (a.variant === 'trash-all') {
+      persistTrash([])
     }
     requestCloseConfirmModal()
+  }
+
+  function restoreFromTrash(trashId: string) {
+    const entry = trash.find((e) => e.id === trashId)
+    if (!entry) return
+    const next = restoreTrashedEntry(groups, entry)
+    persist(next.filter((g) => g.tabs.length > 0))
+    persistTrash(trash.filter((e) => e.id !== trashId))
+  }
+
+  function toggleTabFavorite(groupId: string, tabId: string) {
+    persist(
+      groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              tabs: g.tabs.map((tab) =>
+                tab.id !== tabId
+                  ? tab
+                  : {
+                      ...tab,
+                      favorite: tab.favorite ? undefined : true,
+                    },
+              ),
+            },
+      ),
+    )
   }
 
   function togglePin(groupId: string) {
@@ -1685,11 +1887,17 @@ function App() {
 
         <div className="stats">
           <div className="stat-card">
-            <div className="stat-value">{visible.length}</div>
-            <div className="stat-label">grupos</div>
+            <div className="stat-value">
+              {mainView === 'trash' ? visibleTrash.length : visible.length}
+            </div>
+            <div className="stat-label">
+              {mainView === 'trash' ? 'itens' : 'grupos'}
+            </div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{visibleTabs}</div>
+            <div className="stat-value">
+              {mainView === 'trash' ? trashTabCount : visibleTabs}
+            </div>
             <div className="stat-label">abas</div>
           </div>
         </div>
@@ -1853,7 +2061,7 @@ function App() {
             disabled={groups.length === 0}
           >
             <IconTrash />
-            Excluir tudo
+            Mover tudo para a lixeira
           </button>
         </div>
 
@@ -1951,16 +2159,50 @@ function App() {
       </aside>
 
       <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
-        <header className="main-header">
-          <h1 className="main-title">Abas salvas</h1>
-          {!simpleLayout ? (
-            <p className="main-subtitle">
-              Gerencie suas abas do navegador em um só lugar.
-            </p>
-          ) : null}
-        </header>
+        <div className="main-tabs-wrap">
+          <nav className="main-tabs" role="tablist" aria-label="Seções">
+            <div className="main-tabs-slider" aria-hidden>
+              <div
+                className="main-tabs-slider-rect"
+                style={{
+                  transform: `translateX(${MAIN_VIEWS.indexOf(mainView) * 100}%)`,
+                }}
+              />
+            </div>
+            <div className="main-tabs-list">
+              {MAIN_VIEWS.map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  role="tab"
+                  className={`main-tab${mainView === view ? ' main-tab--active' : ''}`}
+                  aria-selected={mainView === view}
+                  onClick={() => setMainView(view)}
+                >
+                  {MAIN_VIEW_LABELS[view]}
+                  {view === 'trash' && trash.length > 0 ? (
+                    <span className="main-tab-badge">{trashTabCount}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </nav>
+        </div>
 
-        {tagIndex.length > 0 ? (
+        {mainView === 'trash' && trash.length > 0 ? (
+          <div className="trash-toolbar">
+            <button
+              type="button"
+              className="btn btn-outline btn-danger trash-toolbar-btn"
+              onClick={() => openConfirmDeleteModal({ variant: 'trash-all' })}
+            >
+              <IconTrash />
+              Esvaziar lixeira
+            </button>
+          </div>
+        ) : null}
+
+        {mainView !== 'trash' && tagIndex.length > 0 ? (
           <section
             className="tag-filter-bar"
             aria-label="Filtrar listagem por tags"
@@ -2010,15 +2252,153 @@ function App() {
         ) : null}
 
         <div className="group-list">
-          {visible.length === 0 ? (
+          {mainView === 'trash' ? (
+            visibleTrash.length === 0 ? (
+              <div className="empty-state">
+                {trash.length === 0
+                  ? 'A lixeira está vazia. Itens excluídos aparecerão aqui para você restaurar ou apagar de vez.'
+                  : 'Nenhum resultado na lixeira para essa busca.'}
+              </div>
+            ) : (
+              visibleTrash.map((entry) => {
+                const g = entry.group
+                const deleted = new Date(entry.deletedAt)
+                const groupTitle =
+                  g.customTitle ??
+                  formatGroupPrimary(new Date(entry.restore.savedAt))
+                return (
+                  <article
+                    key={entry.id}
+                    className={`group-card group-card--trash${simpleLayout ? ' group-card--simple' : ''}`}
+                  >
+                    <div className="group-header">
+                      <button
+                        type="button"
+                        className="group-header-lead"
+                        id={`trash-header-${entry.id}`}
+                        title={g.expanded ? 'Recolher' : 'Expandir'}
+                        onClick={() => toggleTrashExpanded(entry.id)}
+                        aria-expanded={g.expanded}
+                        aria-controls={`trash-panel-${entry.id}`}
+                      >
+                        <IconChevron open={g.expanded} />
+                        <span className="group-folder-icon" aria-hidden>
+                          <IconFolder />
+                        </span>
+                        <span className="group-date" title={groupTitle}>
+                          {groupTitle}
+                        </span>
+                      </button>
+                      <div className="group-header-meta">
+                        <IconClock />
+                        <span>
+                          Excluído {formatRelativeAgo(deleted)} ·{' '}
+                          {entry.kind === 'group' ? 'grupo' : 'aba'}
+                        </span>
+                      </div>
+                      <span className="group-badge">{g.tabs.length}</span>
+                      <div className="group-header-tools">
+                        <button
+                          type="button"
+                          className="group-tool-btn"
+                          aria-label="Restaurar"
+                          title="Restaurar"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            restoreFromTrash(entry.id)
+                          }}
+                        >
+                          <IconRestore />
+                        </button>
+                        <button
+                          type="button"
+                          className="group-tool-btn group-tool-btn--danger"
+                          aria-label="Apagar permanentemente"
+                          title="Apagar permanentemente"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openConfirmDeleteModal({
+                              variant: 'trash-entry',
+                              trashId: entry.id,
+                            })
+                          }}
+                        >
+                          <IconTrash />
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      className={`group-accordion${g.expanded ? ' group-accordion--open' : ''}`}
+                      id={`trash-panel-${entry.id}`}
+                      role="region"
+                      aria-labelledby={`trash-header-${entry.id}`}
+                    >
+                      <div
+                        className="group-accordion-inner"
+                        inert={!g.expanded}
+                      >
+                        <div className="group-body">
+                          {g.tabs.map((t) => (
+                            <TabRow
+                              key={t.id}
+                              tab={t}
+                              simpleLayout={simpleLayout}
+                              existingTagOptions={[]}
+                              tagsReadOnly
+                              removeLabel="Apagar permanentemente"
+                              onRequestRemove={() =>
+                                openConfirmDeleteModal({
+                                  variant: 'trash-entry',
+                                  trashId: entry.id,
+                                })
+                              }
+                              onSetTags={() => {}}
+                              onRequestEditTitle={() =>
+                                openEditTabTitleModal({
+                                  groupId: entry.restore.groupId,
+                                  tabId: t.id,
+                                  title: t.title,
+                                })
+                              }
+                              onOpenTab={() =>
+                                void handleOpenSavedTab(
+                                  entry.restore.groupId,
+                                  t.id,
+                                  t.url,
+                                  t.viewed === true,
+                                )
+                              }
+                              onClearViewed={() =>
+                                setTabViewed(
+                                  entry.restore.groupId,
+                                  t.id,
+                                  false,
+                                )
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })
+            )
+          ) : visible.length === 0 ? (
             <div className="empty-state">
-              {groups.length === 0
-                ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
-                : search.trim() !== '' ||
-                    activeTagFilters.length > 0 ||
-                    groupDateRange?.from
-                  ? 'Nenhum resultado para essa busca, tags ou intervalo de datas.'
-                  : 'Nenhum resultado.'}
+              {mainView === 'favorites'
+                ? favoriteGroups.length === 0
+                  ? 'Nenhuma aba favorita. Toque na estrela em uma aba salva para adicionar aos favoritos.'
+                  : search.trim() !== '' || activeTagFilters.length > 0
+                    ? 'Nenhum favorito para essa busca ou filtro de tags.'
+                    : 'Nenhum resultado.'
+                : groups.length === 0
+                  ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
+                  : search.trim() !== '' ||
+                      activeTagFilters.length > 0 ||
+                      groupDateRange?.from
+                    ? 'Nenhum resultado para essa busca, tags ou intervalo de datas.'
+                    : 'Nenhum resultado.'}
             </div>
           ) : (
             visible.map((g) => {
@@ -2099,8 +2479,8 @@ function App() {
                       <button
                         type="button"
                         className="group-tool-btn group-tool-btn--danger"
-                        aria-label="Excluir grupo"
-                        title="Excluir grupo"
+                        aria-label="Mover grupo para a lixeira"
+                        title="Mover grupo para a lixeira"
                         onClick={(e) => {
                           e.stopPropagation()
                           openConfirmDeleteModal({
@@ -2154,6 +2534,10 @@ function App() {
                               )
                             }
                             onClearViewed={() => setTabViewed(g.id, t.id, false)}
+                            showFavorite
+                            onToggleFavorite={() =>
+                              toggleTabFavorite(g.id, t.id)
+                            }
                           />
                         ))}
                       </div>

@@ -17,6 +17,7 @@ function normalizeTab(raw: SavedTab, groupSavedAt: string): SavedTab {
         ? raw.addedAt
         : fallback,
     viewed: raw.viewed === true,
+    favorite: raw.favorite === true,
   }
 }
 
