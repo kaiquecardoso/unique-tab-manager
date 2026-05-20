@@ -8,7 +8,23 @@ registerAuthTabListener()
 registerOAuthPopupTracking()
 registerRealtimeListeners()
 import { calendarDayKey } from './lib/calendarDay'
+import {
+  findSavedTabByUrl,
+  removeTabFromGroups,
+  type SavedTabRef,
+} from './lib/savedTabLookup'
+import { createTrashedTab } from './lib/trashOps'
+import { loadTrash, saveTrash, sortTrashEntries } from './lib/trashStorage'
+import {
+  showDuplicatePrompt,
+  type DuplicatePromptOptions,
+  type DuplicateSaveChoice,
+} from './lib/duplicatePrompt'
 import type { SavedTab, TabGroup } from './types/tabs'
+
+function isDuplicateSaveChoice(value: unknown): value is DuplicateSaveChoice {
+  return value === 'keep-new' || value === 'keep-old' || value === 'cancel'
+}
 
 type ContextLinkDraft = {
   url: string
@@ -199,25 +215,11 @@ async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
   return bestTitle || 'Sem título'
 }
 
-async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
-  if (!tab.id || !tab.url || isRestrictedUrl(tab.url)) return
-
-  const now = new Date().toISOString()
-  const newTab: SavedTab = {
-    id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: await resolveTabTitle(tab),
-    url: tab.url,
-    addedAt: now,
-    tags: [],
-  }
-
-  const groups = await loadGroups()
+function addTabToTodayGroup(groups: TabGroup[], newTab: SavedTab): TabGroup[] {
   const todayKey = calendarDayKey(new Date())
   const existingIndex = groups.findIndex(
     (g) => calendarDayKey(new Date(g.savedAt)) === todayKey,
   )
-
-  let nextGroups: TabGroup[]
 
   if (existingIndex !== -1) {
     const target = groups[existingIndex]
@@ -227,16 +229,155 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
       tabs: [newTab, ...target.tabs],
     }
     const without = groups.filter((_, i) => i !== existingIndex)
-    nextGroups = [updated, ...without]
-  } else {
-    const newGroup: TabGroup = {
-      id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      savedAt: new Date().toISOString(),
-      expanded: true,
-      tabs: [newTab],
-    }
-    nextGroups = [newGroup, ...groups]
+    return [updated, ...without]
   }
+
+  const newGroup: TabGroup = {
+    id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    savedAt: new Date().toISOString(),
+    expanded: true,
+    tabs: [newTab],
+  }
+  return [newGroup, ...groups]
+}
+
+async function runDuplicatePromptInTab(
+  tabId: number,
+  options: DuplicatePromptOptions,
+): Promise<DuplicateSaveChoice | undefined> {
+  const targets = [{ tabId }, { tabId, allFrames: true as const }]
+
+  for (const target of targets) {
+    try {
+      const [viaGlobal] = await chrome.scripting.executeScript({
+        target,
+        func: (opts: DuplicatePromptOptions) => {
+          const fn = (
+            globalThis as {
+              __OTM_showDuplicatePrompt?: (
+                o: DuplicatePromptOptions,
+              ) => Promise<DuplicateSaveChoice>
+            }
+          ).__OTM_showDuplicatePrompt
+          return typeof fn === 'function' ? fn(opts) : undefined
+        },
+        args: [options],
+      })
+      if (isDuplicateSaveChoice(viaGlobal?.result)) return viaGlobal.result
+
+      const [direct] = await chrome.scripting.executeScript({
+        target,
+        func: showDuplicatePrompt,
+        args: [options],
+      })
+      if (isDuplicateSaveChoice(direct?.result)) return direct.result
+    } catch {
+      // Tenta outro alvo (ex.: frame principal vs todos os frames).
+    }
+  }
+
+  return undefined
+}
+
+async function askDuplicateChoice(
+  tabId: number,
+  options: DuplicatePromptOptions,
+): Promise<DuplicateSaveChoice> {
+  const injected = await runDuplicatePromptInTab(tabId, options)
+  if (isDuplicateSaveChoice(injected)) return injected
+
+  const payload = {
+    type: 'duplicate-prompt' as const,
+    ...options,
+  }
+
+  for (const delay of [0, 120]) {
+    if (delay > 0) await sleep(delay)
+    try {
+      const response = (await chrome.tabs.sendMessage(tabId, payload)) as
+        | { choice?: DuplicateSaveChoice }
+        | undefined
+      if (isDuplicateSaveChoice(response?.choice)) return response.choice
+    } catch {
+      // Content script pode ainda nao estar pronto.
+    }
+  }
+
+  return 'cancel'
+}
+
+async function trashSavedTabRef(ref: SavedTabRef): Promise<void> {
+  const trash = await loadTrash()
+  const entry = createTrashedTab(ref.group, ref.tab)
+  await saveTrash(sortTrashEntries([entry, ...trash]))
+}
+
+async function resolveDuplicateBeforeSave(
+  url: string,
+  promptTabId: number | undefined,
+  newTitle: string | undefined,
+): Promise<{ proceed: boolean; groups: TabGroup[] }> {
+  const groups = await loadGroups()
+  const duplicate = findSavedTabByUrl(groups, url)
+  if (!duplicate) return { proceed: true, groups }
+
+  const choice =
+    typeof promptTabId === 'number'
+      ? await askDuplicateChoice(promptTabId, {
+          url,
+          existingTitle: duplicate.tab.title,
+          existingAddedAt: duplicate.tab.addedAt,
+          newTitle,
+        })
+      : 'cancel'
+
+  if (choice === 'keep-old') {
+    if (typeof promptTabId === 'number') {
+      await notifyTabWithToast(
+        promptTabId,
+        'Link já salvo — mantida a mais antiga',
+        false,
+        url,
+        false,
+        duplicate.tab.title,
+      )
+    }
+    return { proceed: false, groups }
+  }
+
+  if (choice === 'cancel') {
+    return { proceed: false, groups }
+  }
+
+  await trashSavedTabRef(duplicate)
+  return {
+    proceed: true,
+    groups: removeTabFromGroups(groups, duplicate.tab.id),
+  }
+}
+
+async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
+  if (!tab.id || !tab.url || isRestrictedUrl(tab.url)) return
+
+  const preliminaryTitle = normalizeTitle(tab.title) || tab.url
+  const { proceed, groups } = await resolveDuplicateBeforeSave(
+    tab.url,
+    tab.id,
+    preliminaryTitle,
+  )
+  if (!proceed) return
+
+  const tabTitle = await resolveTabTitle(tab)
+  const now = new Date().toISOString()
+  const newTab: SavedTab = {
+    id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: tabTitle,
+    url: tab.url,
+    addedAt: now,
+    tags: [],
+  }
+
+  const nextGroups = addTabToTodayGroup(groups, newTab)
 
   await saveGroupsAndSyncCloud(nextGroups)
   await chrome.tabs.remove(tab.id)
@@ -248,12 +389,25 @@ async function saveLinkToStorage(
   title?: string,
   sourceWindowId?: number,
   sourceTabId?: number,
+  baseGroups?: TabGroup[],
 ): Promise<string> {
   if (!url || isRestrictedUrl(url)) return ''
 
+  const normalizedTitle = normalizeTitle(title)
+  let groupsAfterDuplicate = baseGroups
+
+  if (!groupsAfterDuplicate) {
+    const resolved = await resolveDuplicateBeforeSave(
+      url,
+      sourceTabId,
+      normalizedTitle || url,
+    )
+    if (!resolved.proceed) return ''
+    groupsAfterDuplicate = resolved.groups
+  }
+
   const linkedPageTitle = await resolveLinkedPageTitle(url)
   const normalizedLinkedPageTitle = normalizeTitle(linkedPageTitle)
-  const normalizedTitle = normalizeTitle(title)
   const runtimeLinkedTitle =
     !normalizedLinkedPageTitle || isGenericSiteTitle(normalizedLinkedPageTitle, url)
       ? await resolveLinkedRenderedTitle(url, sourceWindowId, sourceTabId)
@@ -271,32 +425,7 @@ async function saveLinkToStorage(
     tags: [],
   }
 
-  const groups = await loadGroups()
-  const todayKey = calendarDayKey(new Date())
-  const existingIndex = groups.findIndex(
-    (g) => calendarDayKey(new Date(g.savedAt)) === todayKey,
-  )
-
-  let nextGroups: TabGroup[]
-
-  if (existingIndex !== -1) {
-    const target = groups[existingIndex]
-    const updated: TabGroup = {
-      ...target,
-      expanded: true,
-      tabs: [newTab, ...target.tabs],
-    }
-    const without = groups.filter((_, i) => i !== existingIndex)
-    nextGroups = [updated, ...without]
-  } else {
-    const newGroup: TabGroup = {
-      id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      savedAt: new Date().toISOString(),
-      expanded: true,
-      tabs: [newTab],
-    }
-    nextGroups = [newGroup, ...groups]
-  }
+  const nextGroups = addTabToTodayGroup(groupsAfterDuplicate, newTab)
 
   await saveGroupsAndSyncCloud(nextGroups)
   return tabTitle
@@ -538,6 +667,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     void (async () => {
       try {
         const linkTitle = getContextLinkTitle(tab?.id, info.linkUrl!)
+        const preliminaryTitle = linkTitle || info.linkUrl!
+        const { proceed, groups } = await resolveDuplicateBeforeSave(
+          info.linkUrl!,
+          tab?.id,
+          preliminaryTitle,
+        )
+        if (!proceed) return
 
         if (typeof tab?.id === 'number') {
           void notifyTabWithToast(
@@ -554,6 +690,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           linkTitle,
           tab?.windowId,
           tab?.id,
+          groups,
         )
         if (typeof tab?.id === 'number') {
           await notifyTabWithToast(
@@ -602,12 +739,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   void (async () => {
     try {
       const maybeTitle = typeof message.title === 'string' ? message.title : undefined
+      const preliminaryTitle = normalizeTitle(maybeTitle) || message.url
+      const { proceed, groups } = await resolveDuplicateBeforeSave(
+        message.url,
+        _sender.tab?.id,
+        preliminaryTitle,
+      )
+      if (!proceed) {
+        sendResponse({ ok: false, skipped: true })
+        return
+      }
+
       const savedTitle = await saveLinkToStorage(
         message.url,
         maybeTitle,
         _sender.tab?.windowId,
         _sender.tab?.id,
+        groups,
       )
+      if (!savedTitle) {
+        sendResponse({ ok: false })
+        return
+      }
       sendResponse({ ok: true, title: savedTitle || maybeTitle })
     } catch {
       sendResponse({ ok: false })

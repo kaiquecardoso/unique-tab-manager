@@ -1,3 +1,9 @@
+﻿import { showDuplicatePrompt } from './lib/duplicatePrompt'
+
+;(globalThis as { __OTM_showDuplicatePrompt?: typeof showDuplicatePrompt }).__OTM_showDuplicatePrompt =
+  showDuplicatePrompt
+
+
 type SaveLinkMessage = {
   type: 'save-link'
   url: string
@@ -17,6 +23,14 @@ type ToastMessage = {
   isLoading?: boolean
   url?: string
   title?: string
+}
+
+type DuplicatePromptMessage = {
+  type: 'duplicate-prompt'
+  url: string
+  existingTitle: string
+  existingAddedAt?: string
+  newTitle?: string
 }
 
 const TOAST_ID = 'one-tab-manager-toast'
@@ -41,6 +55,7 @@ function getFaviconUrl(url: string | undefined): string {
     return ''
   }
 }
+
 
 function showToast(
   message: string,
@@ -178,14 +193,27 @@ function showToast(
 }
 
 function sendSaveMessage(message: SaveLinkMessage): void {
-  chrome.runtime.sendMessage(message, (response?: { ok?: boolean; title?: string }) => {
-    if (chrome.runtime.lastError || !response?.ok) {
-      showToast('Nao foi possivel salvar o link', true, message.url, false, message.title)
-      return
-    }
+  chrome.runtime.sendMessage(
+    message,
+    (response?: { ok?: boolean; skipped?: boolean; title?: string }) => {
+      if (chrome.runtime.lastError) {
+        showToast('Nao foi possivel salvar o link', true, message.url, false, message.title)
+        return
+      }
 
-    showToast('Link salvo no OneTab', false, message.url, false, response.title ?? message.title)
-  })
+      if (response?.skipped) {
+        document.getElementById(TOAST_ID)?.remove()
+        return
+      }
+
+      if (!response?.ok) {
+        showToast('Nao foi possivel salvar o link', true, message.url, false, message.title)
+        return
+      }
+
+      showToast('Link salvo no OneTab', false, message.url, false, response.title ?? message.title)
+    },
+  )
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -242,16 +270,30 @@ function reportContextLink(anchor: HTMLAnchorElement): void {
   chrome.runtime.sendMessage(message)
 }
 
-chrome.runtime.onMessage.addListener((message: ToastMessage) => {
-  if (message?.type !== 'show-toast') return
-  showToast(
-    message.message,
-    Boolean(message.isError),
-    message.url,
-    Boolean(message.isLoading),
-    message.title,
-  )
-})
+chrome.runtime.onMessage.addListener(
+  (message: ToastMessage | DuplicatePromptMessage, _sender, sendResponse) => {
+    if (message?.type === 'show-toast') {
+      showToast(
+        message.message,
+        Boolean(message.isError),
+        message.url,
+        Boolean(message.isLoading),
+        message.title,
+      )
+      return
+    }
+
+    if (message?.type === 'duplicate-prompt') {
+      void showDuplicatePrompt({
+        url: message.url,
+        existingTitle: message.existingTitle,
+        existingAddedAt: message.existingAddedAt,
+        newTitle: message.newTitle,
+      }).then((choice) => sendResponse({ choice }))
+      return true
+    }
+  },
+)
 
 document.addEventListener(
   'contextmenu',

@@ -26,6 +26,13 @@ import {
   type DuplicateRemovalEntry,
 } from './lib/deduplicateTabs'
 import {
+  countPrunableViewedTabs,
+  DEFAULT_VIEWED_PRUNE_MONTHS,
+  listPrunableViewedTabs,
+  pruneOldViewedTabs,
+  type PrunableViewedEntry,
+} from './lib/pruneViewedTabs'
+import {
   createTrashedGroup,
   createTrashedTab,
   restoreTrashedEntry,
@@ -418,6 +425,20 @@ function IconDedupe() {
   )
 }
 
+function IconPruneViewed() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function IconCloud() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -481,6 +502,160 @@ function IconClose() {
 }
 
 const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
+
+type ExclusionMenuAction = 'remove-duplicates' | 'prune-viewed' | 'all'
+
+function SidebarExclusionDropdown({
+  duplicateTabCount,
+  prunableViewedCount,
+  hasSavedGroups,
+  pruneMonths,
+  onSelectAction,
+}: {
+  duplicateTabCount: number
+  prunableViewedCount: number
+  hasSavedGroups: boolean
+  pruneMonths: number
+  onSelectAction: (action: ExclusionMenuAction) => void
+}) {
+  const menuId = useId()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+
+    function handlePointerDown(event: PointerEvent) {
+      const root = rootRef.current
+      if (!root?.contains(event.target as Node)) setOpen(false)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  function pick(action: ExclusionMenuAction) {
+    setOpen(false)
+    onSelectAction(action)
+  }
+
+  const duplicateHint =
+    duplicateTabCount === 0
+      ? 'Nenhuma URL repetida'
+      : duplicateTabCount === 1
+        ? '1 aba com URL repetida'
+        : `${duplicateTabCount} abas com URL repetida`
+
+  const pruneHint =
+    prunableViewedCount === 0
+      ? `Nenhuma vista há mais de ${pruneMonths} meses`
+      : prunableViewedCount === 1
+        ? '1 aba vista antiga (exceto favoritos)'
+        : `${prunableViewedCount} abas vistas antigas (exceto favoritos)`
+
+  return (
+    <div
+      ref={rootRef}
+      className={`sidebar-exclusion-menu${open ? ' sidebar-exclusion-menu--open' : ''}`}
+    >
+      <button
+        type="button"
+        className="btn btn-outline btn-danger sidebar-exclusion-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <IconTrash />
+        <span className="sidebar-exclusion-menu-trigger-label">Exclusão</span>
+        <IconChevron open={open} />
+      </button>
+      <div
+        id={menuId}
+        role="menu"
+        className={`sidebar-exclusion-menu-panel${open ? ' sidebar-exclusion-menu-panel--open' : ''}`}
+        aria-label="Ações de exclusão"
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="sidebar-exclusion-menu-item"
+          disabled={duplicateTabCount === 0}
+          onClick={() => pick('remove-duplicates')}
+        >
+          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
+            <IconDedupe />
+          </span>
+          <span className="sidebar-exclusion-menu-item-body">
+            <span className="sidebar-exclusion-menu-item-label">
+              Remover duplicadas
+            </span>
+            <span className="sidebar-exclusion-menu-item-hint">{duplicateHint}</span>
+          </span>
+          {duplicateTabCount > 0 ? (
+            <span className="sidebar-exclusion-menu-item-count">
+              {duplicateTabCount}
+            </span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="sidebar-exclusion-menu-item"
+          disabled={prunableViewedCount === 0}
+          onClick={() => pick('prune-viewed')}
+        >
+          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
+            <IconPruneViewed />
+          </span>
+          <span className="sidebar-exclusion-menu-item-body">
+            <span className="sidebar-exclusion-menu-item-label">
+              Limpar vistas antigas
+            </span>
+            <span className="sidebar-exclusion-menu-item-hint">{pruneHint}</span>
+          </span>
+          {prunableViewedCount > 0 ? (
+            <span className="sidebar-exclusion-menu-item-count">
+              {prunableViewedCount}
+            </span>
+          ) : null}
+        </button>
+        <div
+          className="sidebar-exclusion-menu-divider"
+          role="separator"
+          aria-hidden
+        />
+        <button
+          type="button"
+          role="menuitem"
+          className="sidebar-exclusion-menu-item sidebar-exclusion-menu-item--danger"
+          disabled={!hasSavedGroups}
+          onClick={() => pick('all')}
+        >
+          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
+            <IconTrash />
+          </span>
+          <span className="sidebar-exclusion-menu-item-body">
+            <span className="sidebar-exclusion-menu-item-label">
+              Mover tudo para a lixeira
+            </span>
+            <span className="sidebar-exclusion-menu-item-hint">
+              Todos os grupos e abas salvas
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function SidebarDropdownSection({
   id,
@@ -851,6 +1026,7 @@ type ConfirmDeleteAction =
   | { variant: 'trash-entry'; trashId: string }
   | { variant: 'trash-all' }
   | { variant: 'remove-duplicates' }
+  | { variant: 'prune-viewed' }
 
 type EditTabTitleAction = {
   groupId: string
@@ -1007,6 +1183,18 @@ function App() {
               ? 'Esta aba será movida para a lixeira.'
               : `Estas ${n} abas serão movidas para a lixeira.`,
           confirmLabel: 'Remover duplicadas',
+        }
+      }
+      case 'prune-viewed': {
+        const n = countPrunableViewedTabs(groups)
+        const monthsLabel = `${DEFAULT_VIEWED_PRUNE_MONTHS} meses`
+        return {
+          title: 'Limpar abas vistas antigas?',
+          body:
+            n === 1
+              ? `Esta aba foi aberta na lista há mais de ${monthsLabel} e será movida para a lixeira. Favoritos não são removidos.`
+              : `Estas ${n} abas foram abertas na lista há mais de ${monthsLabel} e serão movidas para a lixeira. Favoritos não são removidos.`,
+          confirmLabel: 'Limpar vistas antigas',
         }
       }
       default:
@@ -1619,12 +1807,29 @@ function App() {
     [groups],
   )
 
+  const prunableViewedCount = useMemo(
+    () => countPrunableViewedTabs(groups),
+    [groups],
+  )
+
   const duplicateRemovalPreview = useMemo(() => {
     if (confirmAction?.variant !== 'remove-duplicates') return []
     return listDuplicateRemovalPreview(groups, dedupeKeepStrategy)
   }, [confirmAction, groups, dedupeKeepStrategy])
 
+  const prunableViewedPreview = useMemo(() => {
+    if (confirmAction?.variant !== 'prune-viewed') return []
+    return listPrunableViewedTabs(groups)
+  }, [confirmAction, groups])
+
   function dedupeEntryGroupLabel(entry: DuplicateRemovalEntry): string {
+    return (
+      entry.groupCustomTitle ??
+      formatGroupPrimary(new Date(entry.groupSavedAt))
+    )
+  }
+
+  function prunableViewedEntryGroupLabel(entry: PrunableViewedEntry): string {
     return (
       entry.groupCustomTitle ??
       formatGroupPrimary(new Date(entry.groupSavedAt))
@@ -1804,6 +2009,19 @@ function App() {
       setSyncStatus('ok')
       setSyncMessage(
         `${removedCount} duplicada${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira (mantida a mais ${keep === 'newest' ? 'recente' : 'antiga'}).`,
+      )
+    }
+    requestCloseConfirmModal()
+  }
+
+  function executePruneViewedTabs() {
+    const { groups: next, trashEntries, removedCount } = pruneOldViewedTabs(groups)
+    if (removedCount > 0) {
+      persistTrash([...trashEntries, ...trash])
+      persist(next)
+      setSyncStatus('ok')
+      setSyncMessage(
+        `${removedCount} aba${removedCount === 1 ? '' : 's'} vista${removedCount === 1 ? '' : 's'} antiga${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira.`,
       )
     }
     requestCloseConfirmModal()
@@ -2098,35 +2316,6 @@ function App() {
                     </span>
                   </span>
                 </button>
-                <div
-                  className="sidebar-section-divider"
-                  role="separator"
-                  aria-hidden
-                />
-                <button
-                  type="button"
-                  className="sidebar-action-row"
-                  disabled={duplicateTabCount === 0}
-                  onClick={() =>
-                    openConfirmDeleteModal({ variant: 'remove-duplicates' })
-                  }
-                >
-                  <span className="sidebar-action-row-icon" aria-hidden>
-                    <IconDedupe />
-                  </span>
-                  <span className="sidebar-action-row-body">
-                    <span className="sidebar-action-row-label">
-                      Remover duplicadas
-                    </span>
-                    <span className="sidebar-action-row-hint">
-                      {duplicateTabCount === 0
-                        ? 'Nenhuma URL repetida nas abas salvas'
-                        : duplicateTabCount === 1
-                          ? '1 aba com a mesma URL de outra'
-                          : `${duplicateTabCount} abas com URL repetida`}
-                    </span>
-                  </span>
-                </button>
               </div>
               <input
                 ref={importGroupsInputRef}
@@ -2154,30 +2343,13 @@ function App() {
               {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
             </button>
           ) : null}
-          {duplicateTabCount > 0 ? (
-            <button
-              type="button"
-              className="btn btn-outline sidebar-footer-btn"
-              onClick={() =>
-                openConfirmDeleteModal({ variant: 'remove-duplicates' })
-              }
-            >
-              <IconDedupe />
-              Remover duplicadas
-              {duplicateTabCount === 1
-                ? ' (1)'
-                : ` (${duplicateTabCount})`}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-outline btn-danger"
-            onClick={() => openConfirmDeleteModal({ variant: 'all' })}
-            disabled={groups.length === 0}
-          >
-            <IconTrash />
-            Mover tudo para a lixeira
-          </button>
+          <SidebarExclusionDropdown
+            duplicateTabCount={duplicateTabCount}
+            prunableViewedCount={prunableViewedCount}
+            hasSavedGroups={groups.length > 0}
+            pruneMonths={DEFAULT_VIEWED_PRUNE_MONTHS}
+            onSelectAction={(action) => openConfirmDeleteModal({ variant: action })}
+          />
         </div>
 
         <p className="sidebar-hint">
@@ -2778,7 +2950,7 @@ function App() {
               onTransitionEnd={handleConfirmModalBackdropTransitionEnd}
             >
               <div
-                className={`modal-dialog${confirmAction.variant === 'remove-duplicates' ? ' modal-dialog--dedupe' : ''}`}
+                className={`modal-dialog${confirmAction.variant === 'remove-duplicates' || confirmAction.variant === 'prune-viewed' ? ' modal-dialog--dedupe' : ''}`}
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby="confirm-modal-title"
@@ -2858,6 +3030,52 @@ function App() {
                     </ul>
                   </>
                 ) : null}
+                {confirmAction.variant === 'prune-viewed' ? (
+                  <ul
+                    className="dedupe-preview-list"
+                    aria-label="Abas vistas antigas"
+                  >
+                    {prunableViewedPreview.map((entry) => (
+                      <li key={entry.tab.id} className="dedupe-preview-item">
+                        <button
+                          type="button"
+                          className="dedupe-preview-open"
+                          title={entry.tab.url}
+                          onClick={() =>
+                            void handleOpenSavedTab(
+                              entry.groupId,
+                              entry.tab.id,
+                              entry.tab.url,
+                              entry.tab.viewed === true,
+                            )
+                          }
+                        >
+                          <img
+                            className="dedupe-preview-favicon"
+                            src={faviconUrl(entry.tab.url)}
+                            alt=""
+                            width={20}
+                            height={20}
+                            loading="lazy"
+                          />
+                          <div className="dedupe-preview-text">
+                            <span
+                              className="dedupe-preview-title"
+                              title={entry.tab.title}
+                            >
+                              {entry.tab.title}
+                            </span>
+                            <span className="dedupe-preview-meta">
+                              {entry.urlLabel}
+                              <span aria-hidden> · </span>
+                              {prunableViewedEntryGroupLabel(entry)}
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className="modal-actions">
                   <button
                     type="button"
@@ -2876,6 +3094,15 @@ function App() {
                     >
                       <IconDedupe />
                       Remover duplicadas
+                    </button>
+                  ) : confirmAction.variant === 'prune-viewed' ? (
+                    <button
+                      type="button"
+                      className="btn btn-danger-solid modal-btn"
+                      onClick={executePruneViewedTabs}
+                    >
+                      <IconPruneViewed />
+                      Limpar vistas antigas
                     </button>
                   ) : (
                     <button
