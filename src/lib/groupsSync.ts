@@ -94,25 +94,30 @@ export async function pushCloudGroups(groups: TabGroup[]): Promise<GroupsCloudPa
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 
-export function scheduleCloudPush(groups: TabGroup[]): void {
+/** Envia grupos à nuvem imediatamente (obrigatório no service worker — timers podem não disparar). */
+export async function flushCloudPush(groups?: TabGroup[]): Promise<void> {
+  if (pushTimer) {
+    clearTimeout(pushTimer)
+    pushTimer = null
+  }
+
+  const token = await getStoredToken()
+  if (!token) return
+
+  const toPush = groups ?? (await loadGroups())
+  await pushCloudGroups(toPush)
+}
+
+export function scheduleCloudPush(groups?: TabGroup[]): void {
   if (pushTimer) {
     clearTimeout(pushTimer)
   }
 
   pushTimer = setTimeout(() => {
     pushTimer = null
-    void (async () => {
-      const token = await getStoredToken()
-      if (!token) return
-
-      const localUpdatedAt = new Date().toISOString()
-      await setSyncMeta({
-        localUpdatedAt,
-        serverUpdatedAt: (await getSyncMeta())?.serverUpdatedAt ?? null,
-      })
-
-      await pushCloudGroups(groups)
-    })()
+    void flushCloudPush(groups).catch((error) => {
+      console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+    })
   }, 800)
 }
 
@@ -164,4 +169,17 @@ export async function touchLocalSyncMeta(): Promise<void> {
     localUpdatedAt: now,
     serverUpdatedAt: meta?.serverUpdatedAt ?? null,
   })
+}
+
+/** Salva grupos no storage local e envia à nuvem (push imediato no service worker). */
+export async function saveGroupsAndSyncCloud(groups: TabGroup[]): Promise<void> {
+  await saveGroups(groups)
+  const token = await getStoredToken()
+  if (!token) return
+  await touchLocalSyncMeta()
+  try {
+    await flushCloudPush(groups)
+  } catch (error) {
+    console.error('[one-tab-manager] Falha ao sincronizar grupos com a nuvem:', error)
+  }
 }

@@ -19,12 +19,19 @@ import {
   TRASH_STORAGE_KEY,
 } from './lib/trashStorage'
 import {
+  countDuplicateTabs,
+  deduplicateGroups,
+  listDuplicateRemovalPreview,
+  type DedupeKeepStrategy,
+  type DuplicateRemovalEntry,
+} from './lib/deduplicateTabs'
+import {
   createTrashedGroup,
   createTrashedTab,
   restoreTrashedEntry,
 } from './lib/trashOps'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
-import { buildTabsCountByLocalDay } from './lib/tabsPerCalendarDay'
+import { buildDayViewedStatsByLocalDay } from './lib/tabsPerCalendarDay'
 import {
   findOpenBrowserTab,
   focusBrowserTab,
@@ -388,6 +395,20 @@ function IconUpload() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M12 20V10m0 0l3.5 3.5M12 10l-3.5 3.5M5 6h14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconDedupe() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 7h11a2 2 0 0 1 2 2v11M7 8V6a2 2 0 0 1 2-2h11M5 17H4a2 2 0 0 1-2-2v-1"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -829,6 +850,7 @@ type ConfirmDeleteAction =
   | { variant: 'tab'; groupId: string; tabId: string }
   | { variant: 'trash-entry'; trashId: string }
   | { variant: 'trash-all' }
+  | { variant: 'remove-duplicates' }
 
 type EditTabTitleAction = {
   groupId: string
@@ -893,6 +915,8 @@ function App() {
   const confirmModalOpenRef = useRef(false)
   const [confirmAction, setConfirmAction] =
     useState<ConfirmDeleteAction | null>(null)
+  const [dedupeKeepStrategy, setDedupeKeepStrategy] =
+    useState<DedupeKeepStrategy>('newest')
   const [editTitleModalMounted, setEditTitleModalMounted] = useState(false)
   const [editTitleModalOpen, setEditTitleModalOpen] = useState(false)
   const editTitleModalOpenRef = useRef(false)
@@ -974,6 +998,17 @@ function App() {
             'Todos os itens da lixeira serão apagados permanentemente. Esta ação não pode ser desfeita.',
           confirmLabel: 'Esvaziar lixeira',
         }
+      case 'remove-duplicates': {
+        const n = countDuplicateTabs(groups)
+        return {
+          title: 'Remover abas duplicadas?',
+          body:
+            n === 1
+              ? 'Esta aba será movida para a lixeira.'
+              : `Estas ${n} abas serão movidas para a lixeira.`,
+          confirmLabel: 'Remover duplicadas',
+        }
+      }
       default:
         return {
           title: '',
@@ -981,7 +1016,7 @@ function App() {
           confirmLabel: 'Confirmar',
         }
     }
-  }, [confirmAction])
+  }, [confirmAction, groups])
 
   const persist = useCallback(
     (next: TabGroup[]) => {
@@ -1442,6 +1477,9 @@ function App() {
   }
 
   function openConfirmDeleteModal(action: ConfirmDeleteAction) {
+    if (action.variant === 'remove-duplicates') {
+      setDedupeKeepStrategy('newest')
+    }
     setConfirmAction(action)
     setConfirmModalMounted(true)
   }
@@ -1517,14 +1555,14 @@ function App() {
       .sort((a, b) => a.tag.localeCompare(b.tag, 'pt-BR'))
   }, [groups])
 
-  const { map: tabsByDayMap } = useMemo(
-    () => buildTabsCountByLocalDay(groups),
+  const viewedByDayMap = useMemo(
+    () => buildDayViewedStatsByLocalDay(groups),
     [groups],
   )
 
   const sidebarCalendarDayButton = useMemo(
-    () => createSidebarCalendarDayButton(tabsByDayMap),
-    [tabsByDayMap],
+    () => createSidebarCalendarDayButton(viewedByDayMap),
+    [viewedByDayMap],
   )
 
   const favoriteGroups = useMemo(
@@ -1575,6 +1613,23 @@ function App() {
     () => trash.reduce((n, e) => n + e.group.tabs.length, 0),
     [trash],
   )
+
+  const duplicateTabCount = useMemo(
+    () => countDuplicateTabs(groups),
+    [groups],
+  )
+
+  const duplicateRemovalPreview = useMemo(() => {
+    if (confirmAction?.variant !== 'remove-duplicates') return []
+    return listDuplicateRemovalPreview(groups, dedupeKeepStrategy)
+  }, [confirmAction, groups, dedupeKeepStrategy])
+
+  function dedupeEntryGroupLabel(entry: DuplicateRemovalEntry): string {
+    return (
+      entry.groupCustomTitle ??
+      formatGroupPrimary(new Date(entry.groupSavedAt))
+    )
+  }
 
   function setTabTags(groupId: string, tabId: string, tags: string[]) {
     persist(
@@ -1734,6 +1789,22 @@ function App() {
       persistTrash(trash.filter((e) => e.id !== a.trashId))
     } else if (a.variant === 'trash-all') {
       persistTrash([])
+    }
+    requestCloseConfirmModal()
+  }
+
+  function executeRemoveDuplicates(keep: 'newest' | 'oldest') {
+    const { groups: next, trashEntries, removedCount } = deduplicateGroups(
+      groups,
+      keep,
+    )
+    if (removedCount > 0) {
+      persistTrash([...trashEntries, ...trash])
+      persist(next)
+      setSyncStatus('ok')
+      setSyncMessage(
+        `${removedCount} duplicada${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira (mantida a mais ${keep === 'newest' ? 'recente' : 'antiga'}).`,
+      )
     }
     requestCloseConfirmModal()
   }
@@ -2027,6 +2098,35 @@ function App() {
                     </span>
                   </span>
                 </button>
+                <div
+                  className="sidebar-section-divider"
+                  role="separator"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  className="sidebar-action-row"
+                  disabled={duplicateTabCount === 0}
+                  onClick={() =>
+                    openConfirmDeleteModal({ variant: 'remove-duplicates' })
+                  }
+                >
+                  <span className="sidebar-action-row-icon" aria-hidden>
+                    <IconDedupe />
+                  </span>
+                  <span className="sidebar-action-row-body">
+                    <span className="sidebar-action-row-label">
+                      Remover duplicadas
+                    </span>
+                    <span className="sidebar-action-row-hint">
+                      {duplicateTabCount === 0
+                        ? 'Nenhuma URL repetida nas abas salvas'
+                        : duplicateTabCount === 1
+                          ? '1 aba com a mesma URL de outra'
+                          : `${duplicateTabCount} abas com URL repetida`}
+                    </span>
+                  </span>
+                </button>
               </div>
               <input
                 ref={importGroupsInputRef}
@@ -2052,6 +2152,21 @@ function App() {
               onClick={() => void runCloudSync()}
             >
               {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
+            </button>
+          ) : null}
+          {duplicateTabCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn-outline sidebar-footer-btn"
+              onClick={() =>
+                openConfirmDeleteModal({ variant: 'remove-duplicates' })
+              }
+            >
+              <IconDedupe />
+              Remover duplicadas
+              {duplicateTabCount === 1
+                ? ' (1)'
+                : ` (${duplicateTabCount})`}
             </button>
           ) : null}
           <button
@@ -2109,7 +2224,7 @@ function App() {
                     ) : null}
                   </>
                 ) : null}
-                {authUser && syncMessage ? (
+                {syncMessage ? (
                   <p
                     className={`sidebar-footer-sync${syncStatus === 'error' ? ' sidebar-footer-sync--error' : ''}`}
                     role="status"
@@ -2663,7 +2778,7 @@ function App() {
               onTransitionEnd={handleConfirmModalBackdropTransitionEnd}
             >
               <div
-                className="modal-dialog"
+                className={`modal-dialog${confirmAction.variant === 'remove-duplicates' ? ' modal-dialog--dedupe' : ''}`}
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby="confirm-modal-title"
@@ -2676,6 +2791,73 @@ function App() {
                 <p id="confirm-modal-desc" className="modal-body">
                   {confirmCopy.body}
                 </p>
+                {confirmAction.variant === 'remove-duplicates' ? (
+                  <>
+                    <div
+                      className="dedupe-keep-toggle"
+                      role="group"
+                      aria-label="Qual cópia manter em cada URL"
+                    >
+                      <button
+                        type="button"
+                        className={`dedupe-keep-btn${dedupeKeepStrategy === 'newest' ? ' dedupe-keep-btn--active' : ''}`}
+                        aria-pressed={dedupeKeepStrategy === 'newest'}
+                        onClick={() => setDedupeKeepStrategy('newest')}
+                      >
+                        Manter a mais recente
+                      </button>
+                      <button
+                        type="button"
+                        className={`dedupe-keep-btn${dedupeKeepStrategy === 'oldest' ? ' dedupe-keep-btn--active' : ''}`}
+                        aria-pressed={dedupeKeepStrategy === 'oldest'}
+                        onClick={() => setDedupeKeepStrategy('oldest')}
+                      >
+                        Manter a mais antiga
+                      </button>
+                    </div>
+                    <ul className="dedupe-preview-list" aria-label="Abas duplicadas">
+                      {duplicateRemovalPreview.map((entry) => (
+                        <li key={entry.tab.id} className="dedupe-preview-item">
+                          <button
+                            type="button"
+                            className="dedupe-preview-open"
+                            title={entry.urlKey}
+                            onClick={() =>
+                              void handleOpenSavedTab(
+                                entry.groupId,
+                                entry.tab.id,
+                                entry.tab.url,
+                                entry.tab.viewed === true,
+                              )
+                            }
+                          >
+                            <img
+                              className="dedupe-preview-favicon"
+                              src={faviconUrl(entry.tab.url)}
+                              alt=""
+                              width={20}
+                              height={20}
+                              loading="lazy"
+                            />
+                            <div className="dedupe-preview-text">
+                              <span
+                                className="dedupe-preview-title"
+                                title={entry.tab.title}
+                              >
+                                {entry.tab.title}
+                              </span>
+                              <span className="dedupe-preview-meta">
+                                {entry.urlLabel}
+                                <span aria-hidden> · </span>
+                                {dedupeEntryGroupLabel(entry)}
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 <div className="modal-actions">
                   <button
                     type="button"
@@ -2684,13 +2866,26 @@ function App() {
                   >
                     Cancelar
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger-solid modal-btn"
-                    onClick={executeConfirmDelete}
-                  >
-                    {confirmCopy.confirmLabel}
-                  </button>
+                  {confirmAction.variant === 'remove-duplicates' ? (
+                    <button
+                      type="button"
+                      className="btn btn-danger-solid modal-btn"
+                      onClick={() =>
+                        executeRemoveDuplicates(dedupeKeepStrategy)
+                      }
+                    >
+                      <IconDedupe />
+                      Remover duplicadas
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-danger-solid modal-btn"
+                      onClick={executeConfirmDelete}
+                    >
+                      {confirmCopy.confirmLabel}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>,

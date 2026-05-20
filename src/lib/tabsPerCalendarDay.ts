@@ -9,19 +9,38 @@ export function localDayKeyFromDate(d: Date): string {
   ].join('-')
 }
 
-/** Soma abas por dia de salvamento do grupo (`savedAt`). */
-export function buildTabsCountByLocalDay(groups: TabGroup[]): {
-  map: Map<string, number>
-  max: number
-} {
-  const map = new Map<string, number>()
+export type DayViewedStats = {
+  total: number
+  viewed: number
+}
+
+/** Abas vistas vs total por dia de salvamento do grupo (`savedAt`). */
+export function buildDayViewedStatsByLocalDay(
+  groups: TabGroup[],
+): Map<string, DayViewedStats> {
+  const map = new Map<string, DayViewedStats>()
   for (const g of groups) {
     const key = localDayKeyFromDate(new Date(g.savedAt))
-    map.set(key, (map.get(key) ?? 0) + g.tabs.length)
+    const entry = map.get(key) ?? { total: 0, viewed: 0 }
+    for (const tab of g.tabs) {
+      entry.total += 1
+      if (tab.viewed) entry.viewed += 1
+    }
+    map.set(key, entry)
   }
-  let max = 0
-  for (const v of map.values()) {
-    if (v > max) max = v
-  }
-  return { map, max }
+  return map
+}
+
+export function viewedPercent(stats: DayViewedStats): number {
+  if (stats.total <= 0) return 0
+  return (stats.viewed / stats.total) * 100
+}
+
+export type CalendarDotTier = 'red' | 'yellow' | 'green'
+
+/** Menos de 50% vermelho; de 50% até antes de 100% amarelo; 100% verde. */
+export function dotTierFromViewedPercent(percent: number): CalendarDotTier {
+  if (percent >= 100) return 'green'
+  if (percent >= 50) return 'yellow'
+  return 'red'
 }

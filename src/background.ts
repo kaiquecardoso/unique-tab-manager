@@ -1,6 +1,7 @@
 import { registerAuthTabListener } from './lib/authTabListener'
 import { registerOAuthPopupTracking } from './lib/oauthPopup'
-import { loadGroups, saveGroups } from './lib/groupsStorage'
+import { loadGroups } from './lib/groupsStorage'
+import { saveGroupsAndSyncCloud } from './lib/groupsSync'
 import { registerRealtimeListeners } from './lib/realtime'
 
 registerAuthTabListener()
@@ -237,7 +238,7 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
     nextGroups = [newGroup, ...groups]
   }
 
-  await saveGroups(nextGroups)
+  await saveGroupsAndSyncCloud(nextGroups)
   await chrome.tabs.remove(tab.id)
   await chrome.runtime.openOptionsPage()
 }
@@ -297,7 +298,7 @@ async function saveLinkToStorage(
     nextGroups = [newGroup, ...groups]
   }
 
-  await saveGroups(nextGroups)
+  await saveGroupsAndSyncCloud(nextGroups)
   return tabTitle
 }
 

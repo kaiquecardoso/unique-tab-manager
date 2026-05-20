@@ -1,9 +1,13 @@
-export function tabUrlsMatch(savedUrl: string, openUrl: string): boolean {
+export function tabUrlKey(url: string): string {
   try {
-    return new URL(savedUrl).href === new URL(openUrl).href
+    return new URL(url).href
   } catch {
-    return savedUrl === openUrl
+    return url
   }
+}
+
+export function tabUrlsMatch(savedUrl: string, openUrl: string): boolean {
+  return tabUrlKey(savedUrl) === tabUrlKey(openUrl)
 }
 
 export async function findOpenBrowserTab(
