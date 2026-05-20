@@ -1,7 +1,7 @@
 import { getApiUrl, AUTH_TOKEN_STORAGE_KEY, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { normalizeAllGroups, saveGroups } from './groupsStorage'
-import { SYNC_META_STORAGE_KEY } from './groupsSync'
+import { markRemoteGroupsApply, SYNC_META_STORAGE_KEY } from './groupsSync'
 import {
   applyCloudPreferences,
   type PreferencesCloudPayload,
@@ -61,6 +61,7 @@ async function handleEvent(event: RealtimeEvent): Promise<void> {
   }
 
   if (event.type === 'groups:updated') {
+    markRemoteGroupsApply()
     const groups = normalizeAllGroups(event.payload.groups)
     await saveGroups(groups)
     await chrome.storage.local.set({

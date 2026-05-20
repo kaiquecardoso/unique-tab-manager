@@ -82,15 +82,11 @@ export async function pushCloudPreferences(
   const headers = await authHeaders()
   if (!headers) throw new Error('Não autenticado')
 
-  const meta = await getSyncMeta()
   const response = await fetch(`${getApiUrl()}/preferences`, {
     method: 'PUT',
     headers,
     keepalive: options?.keepalive === true,
-    body: JSON.stringify({
-      preferences,
-      updatedAt: meta?.localUpdatedAt,
-    }),
+    body: JSON.stringify({ preferences }),
   })
 
   if (!response.ok) {

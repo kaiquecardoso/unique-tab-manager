@@ -64,6 +64,12 @@ import {
   type PublicUser,
 } from './lib/api'
 import {
+  consumeSkipGroupsStorageEcho,
+  markLocalGroupsEdit,
+  markLocalGroupsStorageWrite,
+  markRemoteGroupsApply,
+} from './lib/groupsLocalEdit'
+import {
   flushCloudPush,
   flushPendingCloudGroupsPush,
   syncGroupsWithCloud,
@@ -1218,10 +1224,15 @@ function App() {
       const sorted = sortGroupsList(next)
       setGroups(sorted)
       void (async () => {
-        await saveGroups(sorted)
-        if (!authUser) return
+        if (!authUser) {
+          await saveGroups(sorted)
+          return
+        }
 
+        markLocalGroupsEdit()
         await touchLocalSyncMeta()
+        markLocalGroupsStorageWrite()
+        await saveGroups(sorted)
         try {
           await flushCloudPush(sorted)
           setSyncStatus('ok')
@@ -1497,6 +1508,7 @@ function App() {
 
       if (message.type === 'realtime:groups' && 'payload' in message) {
         const payload = message.payload as GroupsCloudPayload
+        markRemoteGroupsApply()
         setGroups(sortGroupsList(normalizeAllGroups(payload.groups)))
         setSyncStatus('ok')
         setSyncMessage('Grupos atualizados')
@@ -1536,6 +1548,9 @@ function App() {
       if (changes[GROUPS_STORAGE_KEY]) {
         const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
         if (Array.isArray(next)) {
+          if (!consumeSkipGroupsStorageEcho()) {
+            markRemoteGroupsApply()
+          }
           setGroups(sortGroupsList(normalizeAllGroups(next)))
         }
       }

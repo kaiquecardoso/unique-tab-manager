@@ -3,6 +3,12 @@ import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
 import { loadGroups, normalizeAllGroups, saveGroups } from './groupsStorage'
+import {
+  clearLocalGroupsEditPending,
+  hasLocalGroupsEditPending,
+  markLocalGroupsEdit,
+  markLocalGroupsStorageWrite,
+} from './groupsLocalEdit'
 import { nextLocalUpdatedAtIso } from './syncMetaTime'
 
 export const SYNC_META_STORAGE_KEY = 'oneTabGroupsSyncV1'
@@ -70,6 +76,10 @@ function groupsSnapshotEqual(a: TabGroup[], b: TabGroup[]): boolean {
   )
 }
 
+function countTabs(groups: TabGroup[]): number {
+  return groups.reduce((total, group) => total + group.tabs.length, 0)
+}
+
 async function putCloudGroupsOnce(
   groups: TabGroup[],
   options?: { keepalive?: boolean },
@@ -79,15 +89,11 @@ async function putCloudGroupsOnce(
     throw new Error('Não autenticado')
   }
 
-  const meta = await getSyncMeta()
   const response = await fetch(`${getApiUrl()}/groups`, {
     method: 'PUT',
     headers,
     keepalive: options?.keepalive === true,
-    body: JSON.stringify({
-      groups,
-      updatedAt: meta?.localUpdatedAt,
-    }),
+    body: JSON.stringify({ groups }),
   })
 
   if (!response.ok) {
@@ -128,6 +134,8 @@ export async function pushCloudGroups(
     )
   }
 
+  await saveGroups(result.groups)
+  clearLocalGroupsEditPending()
   return result
 }
 
@@ -193,6 +201,15 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
   const localTime = Date.parse(meta?.localUpdatedAt ?? '1970-01-01T00:00:00.000Z')
   const remoteTime = Date.parse(remote.updatedAt)
 
+  if (
+    hasLocalGroupsEditPending() ||
+    (!groupsSnapshotEqual(local, remote.groups) &&
+      (countTabs(local) > countTabs(remote.groups) || localTime > remoteTime))
+  ) {
+    const pushed = await pushCloudGroups(local)
+    return pushed.groups
+  }
+
   let result: TabGroup[]
 
   if (remote.groups.length === 0 && local.length > 0) {
@@ -230,13 +247,18 @@ export async function touchLocalSyncMeta(): Promise<void> {
 
 /** Salva grupos no storage local e envia à nuvem (push imediato no service worker). */
 export async function saveGroupsAndSyncCloud(groups: TabGroup[]): Promise<void> {
-  await saveGroups(groups)
   const token = await getStoredToken()
-  if (!token) return
+  markLocalGroupsEdit()
   await touchLocalSyncMeta()
+  markLocalGroupsStorageWrite()
+  await saveGroups(groups)
+  if (!token) return
   try {
     await flushCloudPush(groups)
   } catch (error) {
     console.error('[one-tab-manager] Falha ao sincronizar grupos com a nuvem:', error)
+    throw error
   }
 }
+
+export { markRemoteGroupsApply } from './groupsLocalEdit.js'
