@@ -1898,6 +1898,68 @@ html[data-theme='dark'] .modal-dialog {
   margin-bottom: 14px;
 }
 
+.modal-dialog--import {
+  max-width: min(100vw - 32px, 26rem);
+}
+
+.import-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+
+.import-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.import-choice-btn:hover,
+.import-choice-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-elevated));
+}
+
+.import-choice-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.import-choice-btn--primary {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-subtle));
+}
+
+.import-choice-btn__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.import-choice-btn__hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.import-choice-btn--danger:hover,
+.import-choice-btn--danger:focus-visible {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--border-subtle));
+  background: color-mix(in srgb, #ef4444 8%, var(--surface-elevated));
+}
+
 .dedupe-keep-toggle {
   display: flex;
   gap: 8px;

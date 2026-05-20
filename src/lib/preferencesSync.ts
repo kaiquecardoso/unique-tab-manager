@@ -1,4 +1,5 @@
 import { getApiUrl, getStoredToken } from './api'
+import { isCloudEnabled } from './cloudEnabled'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
 import {
@@ -132,6 +133,7 @@ function queuePreferencesPush(keepalive = false): () => Promise<void> {
 }
 
 export function schedulePreferencesPush(_preferences: UserPreferences): void {
+  if (!isCloudEnabled) return
   preferencesPushQueue.scheduleDebounced(
     PREFERENCES_PUSH_DEBOUNCE_MS,
     queuePreferencesPush(),
@@ -139,11 +141,12 @@ export function schedulePreferencesPush(_preferences: UserPreferences): void {
 }
 
 export async function flushPreferencesPush(): Promise<void> {
+  if (!isCloudEnabled) return
   await preferencesPushQueue.runImmediate(queuePreferencesPush())
 }
 
 export function flushPendingPreferencesPush(options?: { keepalive?: boolean }): void {
-  if (!preferencesPushQueue.hasPending()) return
+  if (!isCloudEnabled || !preferencesPushQueue.hasPending()) return
   void preferencesPushQueue
     .runImmediate(queuePreferencesPush(options?.keepalive === true))
     .catch((error) => {
@@ -152,6 +155,8 @@ export function flushPendingPreferencesPush(options?: { keepalive?: boolean }): 
 }
 
 export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
+  if (!isCloudEnabled) return loadLocalPreferences()
+
   const token = await getStoredToken()
   if (!token) return loadLocalPreferences()
 

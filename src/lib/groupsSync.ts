@@ -1,5 +1,6 @@
 import type { TabGroup } from '../types/tabs'
 import { getApiUrl, getStoredToken } from './api'
+import { isCloudEnabled } from './cloudEnabled'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
 import {
@@ -133,8 +134,8 @@ export async function pushCloudGroups(
     result = await putCloudGroupsOnce(normalized, options)
   }
 
-  await saveGroupsFromRemote(result.groups)
   await clearLocalGroupsEditPending()
+  await saveGroupsFromRemote(result.groups)
   await clearGroupsSyncFailed()
   await applyDeferredRemoteIfAny()
   return result
@@ -165,7 +166,14 @@ function queueGroupsPush(keepalive = false): () => Promise<void> {
 }
 
 /** Envia grupos à nuvem imediatamente (sempre lê o storage — snapshot mais recente). */
+/** Grava grupos só no dispositivo e avisa a página de opções. */
+export async function saveGroupsLocally(groups: TabGroup[]): Promise<void> {
+  await saveGroupsFromLocal(normalizeAllGroups(groups))
+  await notifyGroupsUpdated()
+}
+
 export async function flushCloudPush(): Promise<void> {
+  if (!isCloudEnabled) return
   try {
     await groupsPushQueue.runImmediate(queueGroupsPush())
   } catch (error) {
@@ -177,6 +185,7 @@ export async function flushCloudPush(): Promise<void> {
 
 /** Agenda PUT com debounce; sempre envia o snapshot mais recente do storage local. */
 export function scheduleCloudPush(): void {
+  if (!isCloudEnabled) return
   groupsPushQueue.scheduleDebounced(GROUPS_PUSH_DEBOUNCE_MS, async () => {
     try {
       await queueGroupsPush()()
@@ -190,7 +199,7 @@ export function scheduleCloudPush(): void {
 
 /** Dispara PUT pendente antes de fechar/recarregar a página. */
 export function flushPendingCloudGroupsPush(options?: { keepalive?: boolean }): void {
-  if (!groupsPushQueue.hasPending()) return
+  if (!isCloudEnabled || !groupsPushQueue.hasPending()) return
   void groupsPushQueue
     .runImmediate(queueGroupsPush(options?.keepalive === true))
     .catch((error) => {
@@ -204,6 +213,8 @@ export function hasPendingGroupsCloudPush(): boolean {
 
 /** Mescla nuvem ↔ local após login ou sync manual. Retorna grupos finais. */
 export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
+  if (!isCloudEnabled) return loadGroups()
+
   const token = await getStoredToken()
   if (!token) {
     return loadGroups()
@@ -281,14 +292,29 @@ export async function touchLocalSyncMeta(): Promise<void> {
 }
 
 /** Salva grupos no storage local e envia à nuvem (push imediato no service worker). */
+export async function notifyGroupsUpdated(): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({ type: 'groups:updated' })
+  } catch {
+    /* página de opções fechada */
+  }
+}
+
 export async function saveGroupsAndSyncCloud(groups: TabGroup[]): Promise<void> {
+  if (!isCloudEnabled) {
+    await saveGroupsLocally(groups)
+    return
+  }
+
   const token = await getStoredToken()
   await markLocalGroupsEdit()
   await touchLocalSyncMeta()
   await saveGroupsFromLocal(groups)
+  await notifyGroupsUpdated()
   if (!token) return
   try {
     await flushCloudPush()
+    await notifyGroupsUpdated()
   } catch (error) {
     console.error('[one-tab-manager] Falha ao sincronizar grupos com a nuvem:', error)
     await markGroupsSyncFailed()

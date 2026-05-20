@@ -1,4 +1,5 @@
 import { getStoredToken } from './api'
+import { isCloudEnabled } from './cloudEnabled'
 
 export const SYNC_OUTBOX_KEY = 'oneTabSyncOutboxV1'
 
@@ -65,6 +66,8 @@ export async function hasSyncOutboxWork(): Promise<boolean> {
 
 /** Reenvia alterações locais pendentes (offline-first). */
 export async function flushSyncOutbox(): Promise<void> {
+  if (!isCloudEnabled) return
+
   const token = await getStoredToken()
   if (!token) return
 
@@ -97,6 +100,8 @@ export async function flushSyncOutbox(): Promise<void> {
 }
 
 export function registerSyncOutboxListeners(): void {
+  if (!isCloudEnabled) return
+
   chrome.alarms.create('one-tab-sync-outbox', { periodInMinutes: 1 })
 
   chrome.alarms.onAlarm.addListener((alarm) => {

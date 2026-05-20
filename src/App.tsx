@@ -56,6 +56,7 @@ import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import { AuthModal } from './AuthModal'
 import { isBillingEnabled } from './lib/billing'
+import { isCloudEnabled } from './lib/cloudEnabled'
 import { PlanBadge } from './components/PlanBadge'
 import { RedeemKeyForm } from './components/RedeemKeyForm'
 import {
@@ -106,6 +107,13 @@ import {
   syncPreferencesWithCloud,
   type PreferencesCloudPayload,
 } from './lib/preferencesSync'
+import {
+  applyImportAddMissing,
+  applyImportReplace,
+  buildImportPreview,
+  parseGroupsFromExportPayload,
+  type ImportPreview,
+} from './lib/importGroups'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
@@ -1064,14 +1072,16 @@ type RedirectToOpenTabAction = {
   tabId: string
 }
 
-type GroupsExportFile = {
-  app?: string
-  version?: number
-  exportedAt?: string
-  groups?: unknown
+type PendingGroupsImport = {
+  groups: TabGroup[]
+  preview: ImportPreview
 }
 
 const GROUPS_EXPORT_VERSION = 1
+
+function formatTabCount(count: number): string {
+  return `${count} aba${count === 1 ? '' : 's'}`
+}
 
 const MAIN_VIEWS = ['saved', 'favorites', 'trash'] as const satisfies readonly MainView[]
 
@@ -1127,6 +1137,12 @@ function App() {
     useState<EditTabTitleAction | null>(null)
   const [editTitleDraft, setEditTitleDraft] = useState('')
   const [groupsImportStatus, setGroupsImportStatus] = useState('')
+  const [importModalMounted, setImportModalMounted] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const importModalOpenRef = useRef(false)
+  const [pendingImport, setPendingImport] = useState<PendingGroupsImport | null>(
+    null,
+  )
   const [redirectModalMounted, setRedirectModalMounted] = useState(false)
   const [redirectModalOpen, setRedirectModalOpen] = useState(false)
   const redirectModalOpenRef = useRef(false)
@@ -1160,6 +1176,10 @@ function App() {
   useEffect(() => {
     authModalOpenRef.current = authModalOpen
   }, [authModalOpen])
+
+  useEffect(() => {
+    importModalOpenRef.current = importModalOpen
+  }, [importModalOpen])
 
   const confirmCopy = useMemo(() => {
     switch (confirmAction?.variant) {
@@ -1234,6 +1254,13 @@ function App() {
     | TabGroup[]
     | ((current: TabGroup[]) => TabGroup[])
 
+  const reloadGroupsFromStorage = useCallback(async () => {
+    const loaded = await loadGroups()
+    const sorted = sortGroupsList(loaded)
+    groupsRef.current = sorted
+    setGroups(sorted)
+  }, [])
+
   const persist = useCallback(
     (nextOrUpdater: GroupsPersistInput) => {
       const sorted = sortGroupsList(
@@ -1244,7 +1271,7 @@ function App() {
       groupsRef.current = sorted
       setGroups(sorted)
       void (async () => {
-        if (!authUser) {
+        if (!isCloudEnabled || !authUser) {
           await saveGroups(sorted)
           return
         }
@@ -1270,6 +1297,7 @@ function App() {
       !editTitleModalMounted &&
       !redirectModalMounted &&
       !authModalMounted &&
+      !importModalMounted &&
       !mobileSidebarOpen
     )
       return
@@ -1283,6 +1311,7 @@ function App() {
     editTitleModalMounted,
     redirectModalMounted,
     authModalMounted,
+    importModalMounted,
     mobileSidebarOpen,
   ])
 
@@ -1321,6 +1350,14 @@ function App() {
     })
     return () => cancelAnimationFrame(id)
   }, [authModalMounted])
+
+  useEffect(() => {
+    if (!importModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setImportModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [importModalMounted])
 
   const applyPreferences = useCallback(
     (prefs: UserPreferences, fromRemote = false) => {
@@ -1377,7 +1414,7 @@ function App() {
     }
 
     void saveLocalPreferencesFromLocal(prefs)
-    if (authUser) {
+    if (isCloudEnabled && authUser) {
       schedulePreferencesPush(prefs)
     }
   }, [
@@ -1391,6 +1428,8 @@ function App() {
 
   const runCloudSync = useCallback(
     async (sessionSubscription?: SubscriptionStatus | null) => {
+      if (!isCloudEnabled) return
+
       const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
       if (!token[AUTH_TOKEN_STORAGE_KEY]) return
 
@@ -1437,6 +1476,8 @@ function App() {
   )
 
   const refreshAuthSession = useCallback(async () => {
+    if (!isCloudEnabled) return
+
     if (authRefreshInFlightRef.current) {
       return authRefreshInFlightRef.current
     }
@@ -1493,11 +1534,13 @@ function App() {
       setTrash(sortTrashEntries(loadedTrash))
       setReady(true)
     })
-    void refreshAuthSession()
+    if (isCloudEnabled) {
+      void refreshAuthSession()
+    }
   }, [refreshAuthSession])
 
   useEffect(() => {
-    if (!authUser) return
+    if (!isCloudEnabled || !authUser) return
 
     const flushPendingToCloud = () => {
       flushPendingCloudGroupsPush({ keepalive: true })
@@ -1527,6 +1570,11 @@ function App() {
         return
       }
 
+      if (message.type === 'groups:updated') {
+        void reloadGroupsFromStorage()
+        return
+      }
+
       if (message.type === 'realtime:groups' && 'payload' in message) {
         void (async () => {
           if (await hasLocalGroupsEditPending()) return
@@ -1550,9 +1598,11 @@ function App() {
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
-  }, [refreshAuthSession, applyPreferences])
+  }, [refreshAuthSession, applyPreferences, reloadGroupsFromStorage])
 
   useEffect(() => {
+    if (!isCloudEnabled) return
+
     const onStorage = (
       changes: Record<string, chrome.storage.StorageChange>,
       area: string,
@@ -1578,7 +1628,11 @@ function App() {
         const source = changes[GROUPS_WRITE_SOURCE_KEY]?.newValue as
           | GroupsWriteSource
           | undefined
-        if (source === 'local') return
+
+        if (source === 'local') {
+          void reloadGroupsFromStorage()
+          return
+        }
 
         void (async () => {
           if (await hasLocalGroupsEditPending()) return
@@ -1610,7 +1664,17 @@ function App() {
     }
     chrome.storage.onChanged.addListener(onChange)
     return () => chrome.storage.onChanged.removeListener(onChange)
-  }, [applyPreferences])
+  }, [applyPreferences, reloadGroupsFromStorage])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void reloadGroupsFromStorage()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [reloadGroupsFromStorage])
 
   useEffect(() => {
     if (!confirmModalMounted) return
@@ -1647,6 +1711,15 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [authModalMounted])
+
+  useEffect(() => {
+    if (!importModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseImportModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [importModalMounted])
 
   useEffect(() => {
     if (!mobileSidebarOpen) return
@@ -2005,29 +2078,62 @@ function App() {
     setGroupsImportStatus('Exportação gerada.')
   }
 
+  function requestCloseImportModal() {
+    importModalOpenRef.current = false
+    setImportModalOpen(false)
+  }
+
+  function handleImportModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!importModalOpenRef.current) {
+      setImportModalMounted(false)
+      setPendingImport(null)
+    }
+  }
+
+  function finishGroupsImport(next: TabGroup[], statusMessage: string) {
+    persist(next)
+    setGroupsImportStatus(statusMessage)
+    requestCloseImportModal()
+  }
+
+  function executeImportReplace() {
+    if (!pendingImport) return
+    const next = applyImportReplace(pendingImport.groups)
+    const { importedGroupCount, importedTabCount } = pendingImport.preview
+    finishGroupsImport(
+      next,
+      `Lista substituída — ${importedGroupCount} grupo${importedGroupCount === 1 ? '' : 's'}, ${formatTabCount(importedTabCount)}.`,
+    )
+  }
+
+  function executeImportAddMissing() {
+    if (!pendingImport) return
+    const { preview } = pendingImport
+    if (preview.newTabCount === 0) return
+
+    const next = applyImportAddMissing(groupsRef.current, pendingImport.groups)
+    finishGroupsImport(
+      next,
+      `${preview.newTabCount} link${preview.newTabCount === 1 ? '' : 's'} novo${preview.newTabCount === 1 ? '' : 's'} adicionado${preview.newTabCount === 1 ? '' : 's'}.`,
+    )
+  }
+
   async function importGroupsFromFile(file: File) {
     try {
-      const parsed = JSON.parse(await file.text()) as GroupsExportFile | unknown
-      const rawGroups = Array.isArray(parsed)
-        ? parsed
-        : (parsed as GroupsExportFile | null)?.groups
-      const importedGroups = normalizeAllGroups(rawGroups).filter(
-        (g) => g.tabs.length > 0,
-      )
+      const parsed = JSON.parse(await file.text()) as unknown
+      const importedGroups = parseGroupsFromExportPayload(parsed)
 
       if (importedGroups.length === 0) {
         setGroupsImportStatus('Nenhum grupo válido encontrado no arquivo.')
         return
       }
 
-      const merged = new Map(groups.map((g) => [g.id, g]))
-      for (const group of importedGroups) {
-        merged.set(group.id, group)
-      }
-      persist([...merged.values()])
-      setGroupsImportStatus(
-        `${importedGroups.length} grupo${importedGroups.length === 1 ? '' : 's'} importado${importedGroups.length === 1 ? '' : 's'}.`,
-      )
+      const preview = buildImportPreview(groupsRef.current, importedGroups)
+      setPendingImport({ groups: importedGroups, preview })
+      setImportModalMounted(true)
     } catch {
       setGroupsImportStatus('Não foi possível importar este arquivo.')
     }
@@ -2437,7 +2543,8 @@ function App() {
         </section>
 
         <div className="sidebar-actions">
-          {authUser &&
+          {isCloudEnabled &&
+          authUser &&
           !authLoading &&
           (!isBillingEnabled || hasCloudAccess(subscription)) ? (
             <button
@@ -2464,6 +2571,7 @@ function App() {
         </p>
         </div>
 
+        {isCloudEnabled ? (
         <footer className="sidebar-footer" aria-label="Conta e sincronização">
           <div className="sidebar-footer-card">
             <div className="sidebar-footer-head">
@@ -2549,6 +2657,13 @@ function App() {
             )}
           </div>
         </footer>
+        ) : (
+          <footer className="sidebar-footer" aria-label="Armazenamento local">
+            <p className="sidebar-hint">
+              Modo offline — dados salvos apenas neste navegador.
+            </p>
+          </footer>
+        )}
       </aside>
 
       <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
@@ -3230,13 +3345,104 @@ function App() {
           )
         : null}
 
-      <AuthModal
-        mounted={authModalMounted}
-        open={authModalOpen}
-        onRequestClose={requestCloseAuthModal}
-        onBackdropTransitionEnd={handleAuthModalBackdropTransitionEnd}
-        onLoginStarted={requestCloseAuthModal}
-      />
+      {importModalMounted && pendingImport
+        ? createPortal(
+            <div
+              className={`modal-backdrop${importModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={requestCloseImportModal}
+              onTransitionEnd={handleImportModalBackdropTransitionEnd}
+            >
+              <div
+                className="modal-dialog modal-dialog--import"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="import-modal-title"
+                aria-describedby="import-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="import-modal-title" className="modal-title">
+                  Como importar este backup?
+                </h2>
+                <p id="import-modal-desc" className="modal-body">
+                  {pendingImport.preview.currentTabCount === 0 ? (
+                    <>
+                      O arquivo traz {pendingImport.preview.importedGroupCount}{' '}
+                      grupo
+                      {pendingImport.preview.importedGroupCount === 1 ? '' : 's'}{' '}
+                      com {formatTabCount(pendingImport.preview.importedTabCount)}.
+                    </>
+                  ) : (
+                    <>
+                      O backup tem {pendingImport.preview.importedGroupCount}{' '}
+                      grupo
+                      {pendingImport.preview.importedGroupCount === 1 ? '' : 's'}{' '}
+                      ({formatTabCount(pendingImport.preview.importedTabCount)}). Você
+                      tem {formatTabCount(pendingImport.preview.currentTabCount)} salvas
+                      agora.
+                    </>
+                  )}
+                </p>
+                <div
+                  className="import-choice-list"
+                  role="group"
+                  aria-label="Modo de importação"
+                >
+                  <button
+                    type="button"
+                    className="import-choice-btn import-choice-btn--primary"
+                    disabled={pendingImport.preview.newTabCount === 0}
+                    onClick={executeImportAddMissing}
+                  >
+                    <span className="import-choice-btn__title">
+                      Manter e completar
+                    </span>
+                    <span className="import-choice-btn__hint">
+                      {pendingImport.preview.newTabCount === 0
+                        ? 'Todos os links do arquivo já estão na sua lista.'
+                        : `Adiciona ${formatTabCount(pendingImport.preview.newTabCount)} que ainda não estão salvas${
+                            pendingImport.preview.duplicateTabCount > 0
+                              ? `; ${formatTabCount(pendingImport.preview.duplicateTabCount)} repetida${pendingImport.preview.duplicateTabCount === 1 ? '' : 's'} ${pendingImport.preview.duplicateTabCount === 1 ? 'é ignorada' : 'são ignoradas'}.`
+                              : '.'
+                          }`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="import-choice-btn import-choice-btn--danger"
+                    onClick={executeImportReplace}
+                  >
+                    <span className="import-choice-btn__title">Substituir tudo</span>
+                    <span className="import-choice-btn__hint">
+                      Apaga a lista atual e usa somente o conteúdo do arquivo. Esta
+                      ação não pode ser desfeita automaticamente.
+                    </span>
+                  </button>
+                </div>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={requestCloseImportModal}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isCloudEnabled ? (
+        <AuthModal
+          mounted={authModalMounted}
+          open={authModalOpen}
+          onRequestClose={requestCloseAuthModal}
+          onBackdropTransitionEnd={handleAuthModalBackdropTransitionEnd}
+          onLoginStarted={requestCloseAuthModal}
+        />
+      ) : null}
     </Fragment>
   )
 }

@@ -1,4 +1,5 @@
 import { getApiUrl, AUTH_TOKEN_STORAGE_KEY, getStoredToken } from './api'
+import { isCloudEnabled } from './cloudEnabled'
 import { getClientId } from './clientId'
 import { normalizeAllGroups, saveGroupsFromRemote } from './groupsStorage'
 import {
@@ -116,6 +117,11 @@ export function disconnectRealtime(): void {
 }
 
 export async function ensureRealtimeConnection(): Promise<void> {
+  if (!isCloudEnabled) {
+    disconnectRealtime()
+    return
+  }
+
   const token = await getStoredToken()
   if (!token) {
     disconnectRealtime()
@@ -162,6 +168,8 @@ export async function ensureRealtimeConnection(): Promise<void> {
 }
 
 export function registerRealtimeListeners(): void {
+  if (!isCloudEnabled) return
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return
 

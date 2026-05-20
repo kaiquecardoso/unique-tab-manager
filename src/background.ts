@@ -2,15 +2,18 @@ import { registerAuthTabListener } from './lib/authTabListener'
 import { tabUrlKey, tabUrlsMatch } from './lib/browserTab'
 import { registerOAuthPopupTracking } from './lib/oauthPopup'
 import { loadGroups } from './lib/groupsStorage'
-import { saveGroupsAndSyncCloud } from './lib/groupsSync'
+import { saveGroupsLocally } from './lib/groupsSync'
+import { isCloudEnabled } from './lib/cloudEnabled'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
 import { registerRealtimeListeners } from './lib/realtime'
 import { registerSyncOutboxListeners } from './lib/syncOutbox'
 
 registerAuthTabListener()
 registerOAuthPopupTracking()
-registerRealtimeListeners()
-registerSyncOutboxListeners()
+if (isCloudEnabled) {
+  registerRealtimeListeners()
+  registerSyncOutboxListeners()
+}
 registerLivePixUrlMarkListeners()
 import { calendarDayKey } from './lib/calendarDay'
 import {
@@ -384,7 +387,7 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
 
   const nextGroups = addTabToTodayGroup(groups, newTab)
 
-  await saveGroupsAndSyncCloud(nextGroups)
+  await saveGroupsLocally(nextGroups)
   await chrome.tabs.remove(tab.id)
   await chrome.runtime.openOptionsPage()
 }
@@ -432,7 +435,7 @@ async function saveLinkToStorage(
 
   const nextGroups = addTabToTodayGroup(groupsAfterDuplicate, newTab)
 
-  await saveGroupsAndSyncCloud(nextGroups)
+  await saveGroupsLocally(nextGroups)
   return tabTitle
 }
 
