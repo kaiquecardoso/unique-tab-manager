@@ -1,12 +1,15 @@
 import { registerAuthTabListener } from './lib/authTabListener'
+import { tabUrlKey, tabUrlsMatch } from './lib/browserTab'
 import { registerOAuthPopupTracking } from './lib/oauthPopup'
 import { loadGroups } from './lib/groupsStorage'
 import { saveGroupsAndSyncCloud } from './lib/groupsSync'
+import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
 import { registerRealtimeListeners } from './lib/realtime'
 
 registerAuthTabListener()
 registerOAuthPopupTracking()
 registerRealtimeListeners()
+registerLivePixUrlMarkListeners()
 import { calendarDayKey } from './lib/calendarDay'
 import {
   findSavedTabByUrl,
@@ -732,6 +735,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     return
+  }
+
+  if (message?.type === 'check-url-status' && Array.isArray(message.urls)) {
+    void (async () => {
+      const urls = message.urls.filter((url: unknown): url is string => typeof url === 'string')
+      const groups = await loadGroups()
+      const openTabs = await chrome.tabs.query({})
+      const status: Record<string, { saved: boolean; open: boolean }> = {}
+
+      for (const url of urls) {
+        const key = tabUrlKey(url)
+        status[key] = {
+          saved: Boolean(findSavedTabByUrl(groups, url)),
+          open: openTabs.some(
+            (tab) => typeof tab.url === 'string' && tabUrlsMatch(url, tab.url),
+          ),
+        }
+      }
+
+      sendResponse(status)
+    })()
+
+    return true
   }
 
   if (message?.type !== 'save-link' || typeof message.url !== 'string') return

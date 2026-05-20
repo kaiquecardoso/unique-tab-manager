@@ -42,5 +42,16 @@ export default defineManifest({
       all_frames: true,
       run_at: 'document_start',
     },
+    {
+      matches: ['https://dashboard.livepix.gg/*'],
+      js: ['src/livepix.ts'],
+      run_at: 'document_idle',
+    },
+  ],
+  web_accessible_resources: [
+    {
+      resources: ['src/assets/logo.png'],
+      matches: ['https://dashboard.livepix.gg/*'],
+    },
   ],
 })
