@@ -1,12 +1,20 @@
 import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
-import { markRemotePreferencesApply } from './preferencesLocalEdit'
+import {
+  clearLocalPreferencesEditPending,
+  hasLocalPreferencesEditPending,
+  markRemotePreferencesApply,
+} from './preferencesLocalEdit'
+import {
+  clearPreferencesSyncFailed,
+  markPreferencesSyncFailed,
+} from './syncOutbox'
 import { nextLocalUpdatedAtIso } from './syncMetaTime'
 import {
   DEFAULT_PREFERENCES,
   loadLocalPreferences,
-  saveLocalPreferences,
+  saveLocalPreferencesFromRemote,
   type UserPreferences,
 } from './preferencesStorage'
 
@@ -98,6 +106,7 @@ export async function pushCloudPreferences(
     localUpdatedAt: data.updatedAt,
     serverUpdatedAt: data.updatedAt,
   })
+  await clearLocalPreferencesEditPending()
   return data
 }
 
@@ -112,7 +121,13 @@ function queuePreferencesPush(keepalive = false): () => Promise<void> {
       localUpdatedAt: nextLocalUpdatedAtIso(meta?.serverUpdatedAt),
       serverUpdatedAt: meta?.serverUpdatedAt ?? null,
     })
-    await pushCloudPreferences(preferences, { keepalive })
+    try {
+      await pushCloudPreferences(preferences, { keepalive })
+      await clearPreferencesSyncFailed()
+    } catch (error) {
+      await markPreferencesSyncFailed()
+      throw error
+    }
   }
 }
 
@@ -157,7 +172,8 @@ export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
     !remote.preferences.groupDateRange
 
   if (preferencesEqual(local, remote.preferences)) {
-    await saveLocalPreferences(remote.preferences)
+    await saveLocalPreferencesFromRemote(remote.preferences)
+    await clearLocalPreferencesEditPending()
     await setSyncMeta({
       localUpdatedAt: remote.updatedAt,
       serverUpdatedAt: remote.updatedAt,
@@ -170,16 +186,20 @@ export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
   if (remoteEmpty && (local.search || local.activeTagFilters.length || local.groupDateRange)) {
     result = local
     await pushCloudPreferences(local)
-  } else if (remoteTime >= localTime) {
+  } else if (
+    (await hasLocalPreferencesEditPending()) ||
+    localTime > remoteTime
+  ) {
+    result = local
+    await pushCloudPreferences(local)
+  } else {
     result = remote.preferences
-    await saveLocalPreferences(result)
+    await saveLocalPreferencesFromRemote(result)
+    await clearLocalPreferencesEditPending()
     await setSyncMeta({
       localUpdatedAt: remote.updatedAt,
       serverUpdatedAt: remote.updatedAt,
     })
-  } else {
-    result = local
-    await pushCloudPreferences(local)
   }
 
   return result
@@ -188,9 +208,13 @@ export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
 export async function applyCloudPreferences(
   payload: PreferencesCloudPayload,
 ): Promise<UserPreferences> {
+  if (await hasLocalPreferencesEditPending()) {
+    return loadLocalPreferences()
+  }
+
   markRemotePreferencesApply()
   const prefs = payload.preferences
-  await saveLocalPreferences(prefs)
+  await saveLocalPreferencesFromRemote(prefs)
   await setSyncMeta({
     localUpdatedAt: payload.updatedAt,
     serverUpdatedAt: payload.updatedAt,

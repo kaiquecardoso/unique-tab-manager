@@ -11,7 +11,15 @@ import { createPortal } from 'react-dom'
 import type { DateRange } from 'react-day-picker'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
-import { loadGroups, saveGroups, GROUPS_STORAGE_KEY, normalizeAllGroups } from './lib/groupsStorage'
+import {
+  loadGroups,
+  saveGroups,
+  saveGroupsFromLocal,
+  GROUPS_STORAGE_KEY,
+  GROUPS_WRITE_SOURCE_KEY,
+  normalizeAllGroups,
+  type GroupsWriteSource,
+} from './lib/groupsStorage'
 import {
   loadTrash,
   saveTrash,
@@ -64,25 +72,27 @@ import {
   type PublicUser,
 } from './lib/api'
 import {
-  consumeSkipGroupsStorageEcho,
+  hasLocalGroupsEditPending,
   markLocalGroupsEdit,
-  markLocalGroupsStorageWrite,
   markRemoteGroupsApply,
 } from './lib/groupsLocalEdit'
 import {
-  flushCloudPush,
+  scheduleCloudPush,
   flushPendingCloudGroupsPush,
   syncGroupsWithCloud,
   touchLocalSyncMeta,
   type GroupsCloudPayload,
 } from './lib/groupsSync'
+import { flushSyncOutbox } from './lib/syncOutbox'
 import {
   loadLocalPreferences,
-  saveLocalPreferences,
   serializeDateRange,
   parseDateRange,
   PREFERENCES_STORAGE_KEY,
+  PREFERENCES_WRITE_SOURCE_KEY,
+  saveLocalPreferencesFromLocal,
   type UserPreferences,
+  type PreferencesWriteSource,
 } from './lib/preferencesStorage'
 import {
   markLocalPreferencesEdit,
@@ -1086,6 +1096,7 @@ function App() {
   const [simpleLayout, setSimpleLayout] = useState(false)
   const prefsHydratedRef = useRef(false)
   const cloudSyncInProgressRef = useRef(false)
+  const groupsRef = useRef<TabGroup[]>([])
   const authRefreshInFlightRef = useRef<Promise<void> | null>(null)
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
@@ -1219,9 +1230,18 @@ function App() {
     }
   }, [confirmAction, groups])
 
+  type GroupsPersistInput =
+    | TabGroup[]
+    | ((current: TabGroup[]) => TabGroup[])
+
   const persist = useCallback(
-    (next: TabGroup[]) => {
-      const sorted = sortGroupsList(next)
+    (nextOrUpdater: GroupsPersistInput) => {
+      const sorted = sortGroupsList(
+        typeof nextOrUpdater === 'function'
+          ? nextOrUpdater(groupsRef.current)
+          : nextOrUpdater,
+      )
+      groupsRef.current = sorted
       setGroups(sorted)
       void (async () => {
         if (!authUser) {
@@ -1229,21 +1249,10 @@ function App() {
           return
         }
 
-        markLocalGroupsEdit()
+        await markLocalGroupsEdit()
         await touchLocalSyncMeta()
-        markLocalGroupsStorageWrite()
-        await saveGroups(sorted)
-        try {
-          await flushCloudPush(sorted)
-          setSyncStatus('ok')
-          setSyncMessage('Salvo na nuvem')
-        } catch (error) {
-          console.error('[one-tab-manager] Falha ao salvar grupos na nuvem:', error)
-          setSyncStatus('error')
-          setSyncMessage(
-            error instanceof Error ? error.message : 'Falha ao salvar na nuvem',
-          )
-        }
+        await saveGroupsFromLocal(sorted)
+        scheduleCloudPush()
       })()
     },
     [authUser],
@@ -1367,7 +1376,7 @@ function App() {
       groupDateRange: serializeDateRange(groupDateRange),
     }
 
-    void saveLocalPreferences(prefs)
+    void saveLocalPreferencesFromLocal(prefs)
     if (authUser) {
       schedulePreferencesPush(prefs)
     }
@@ -1403,17 +1412,23 @@ function App() {
       setSyncMessage('Sincronizando…')
       cloudSyncInProgressRef.current = true
       try {
+        await flushSyncOutbox().catch(() => undefined)
         const [merged, prefs] = await Promise.all([
           syncGroupsWithCloud(),
           syncPreferencesWithCloud(),
         ])
-        setGroups(sortGroupsList(merged))
+        const mergedSorted = sortGroupsList(merged)
+        groupsRef.current = mergedSorted
+        setGroups(mergedSorted)
         applyPreferences(prefs)
         setSyncStatus('ok')
         setSyncMessage('Sincronizado em tempo real')
-      } catch {
+      } catch (error) {
+        console.error('[one-tab-manager] Falha na sincronização:', error)
         setSyncStatus('error')
-        setSyncMessage('Falha ao sincronizar')
+        setSyncMessage(
+          error instanceof Error ? error.message : 'Falha ao sincronizar',
+        )
       } finally {
         cloudSyncInProgressRef.current = false
       }
@@ -1467,8 +1482,14 @@ function App() {
   }, [runCloudSync])
 
   useEffect(() => {
+    groupsRef.current = groups
+  }, [groups])
+
+  useEffect(() => {
     void Promise.all([loadGroups(), loadTrash()]).then(([loaded, loadedTrash]) => {
-      setGroups(sortGroupsList(loaded))
+      const sorted = sortGroupsList(loaded)
+      groupsRef.current = sorted
+      setGroups(sorted)
       setTrash(sortTrashEntries(loadedTrash))
       setReady(true)
     })
@@ -1507,11 +1528,16 @@ function App() {
       }
 
       if (message.type === 'realtime:groups' && 'payload' in message) {
-        const payload = message.payload as GroupsCloudPayload
-        markRemoteGroupsApply()
-        setGroups(sortGroupsList(normalizeAllGroups(payload.groups)))
-        setSyncStatus('ok')
-        setSyncMessage('Grupos atualizados')
+        void (async () => {
+          if (await hasLocalGroupsEditPending()) return
+          const payload = message.payload as GroupsCloudPayload
+          markRemoteGroupsApply()
+          const sorted = sortGroupsList(normalizeAllGroups(payload.groups))
+          groupsRef.current = sorted
+          setGroups(sorted)
+          setSyncStatus('ok')
+          setSyncMessage('Grupos atualizados')
+        })()
         return
       }
 
@@ -1547,12 +1573,20 @@ function App() {
 
       if (changes[GROUPS_STORAGE_KEY]) {
         const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
-        if (Array.isArray(next)) {
-          if (!consumeSkipGroupsStorageEcho()) {
-            markRemoteGroupsApply()
-          }
-          setGroups(sortGroupsList(normalizeAllGroups(next)))
-        }
+        if (!Array.isArray(next)) return
+
+        const source = changes[GROUPS_WRITE_SOURCE_KEY]?.newValue as
+          | GroupsWriteSource
+          | undefined
+        if (source === 'local') return
+
+        void (async () => {
+          if (await hasLocalGroupsEditPending()) return
+          markRemoteGroupsApply()
+          const sorted = sortGroupsList(normalizeAllGroups(next))
+          groupsRef.current = sorted
+          setGroups(sorted)
+        })()
       }
 
       if (changes[TRASH_STORAGE_KEY]) {
@@ -1566,7 +1600,10 @@ function App() {
         const next = changes[PREFERENCES_STORAGE_KEY].newValue as
           | UserPreferences
           | undefined
-        if (next && typeof next === 'object') {
+        const source = changes[PREFERENCES_WRITE_SOURCE_KEY]?.newValue as
+          | PreferencesWriteSource
+          | undefined
+        if (next && typeof next === 'object' && source !== 'local') {
           applyPreferences(next, true)
         }
       }
@@ -2092,8 +2129,8 @@ function App() {
   }
 
   function toggleTabFavorite(groupId: string, tabId: string) {
-    persist(
-      groups.map((g) =>
+    persist((current) =>
+      current.map((g) =>
         g.id !== groupId
           ? g
           : {

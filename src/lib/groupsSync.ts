@@ -2,18 +2,25 @@ import type { TabGroup } from '../types/tabs'
 import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
-import { loadGroups, normalizeAllGroups, saveGroups } from './groupsStorage'
+import {
+  loadGroups,
+  normalizeAllGroups,
+  saveGroupsFromLocal,
+  saveGroupsFromRemote,
+} from './groupsStorage'
 import {
   clearLocalGroupsEditPending,
   hasLocalGroupsEditPending,
   markLocalGroupsEdit,
-  markLocalGroupsStorageWrite,
+  stashDeferredRemoteGroups,
+  takeDeferredRemoteGroups,
 } from './groupsLocalEdit'
+import { clearGroupsSyncFailed, markGroupsSyncFailed } from './syncOutbox'
 import { nextLocalUpdatedAtIso } from './syncMetaTime'
 
 export const SYNC_META_STORAGE_KEY = 'oneTabGroupsSyncV1'
 
-const GROUPS_PUSH_DEBOUNCE_MS = 400
+const GROUPS_PUSH_DEBOUNCE_MS = 800
 
 const groupsPushQueue = createCloudSyncQueue()
 
@@ -103,12 +110,10 @@ async function putCloudGroupsOnce(
   const data = (await response.json()) as GroupsCloudPayload
   const responseGroups = normalizeAllGroups(data.groups)
 
-  if (groupsSnapshotEqual(groups, responseGroups)) {
-    await setSyncMeta({
-      localUpdatedAt: data.updatedAt,
-      serverUpdatedAt: data.updatedAt,
-    })
-  }
+  await setSyncMeta({
+    localUpdatedAt: data.updatedAt,
+    serverUpdatedAt: data.updatedAt,
+  })
 
   return {
     groups: responseGroups,
@@ -128,44 +133,56 @@ export async function pushCloudGroups(
     result = await putCloudGroupsOnce(normalized, options)
   }
 
-  if (!groupsSnapshotEqual(normalized, result.groups)) {
-    throw new Error(
-      'O servidor devolveu uma versão antiga dos grupos. Use Sincronizar ou tente de novo.',
-    )
-  }
-
-  await saveGroups(result.groups)
-  clearLocalGroupsEditPending()
+  await saveGroupsFromRemote(result.groups)
+  await clearLocalGroupsEditPending()
+  await clearGroupsSyncFailed()
+  await applyDeferredRemoteIfAny()
   return result
 }
 
-function queueGroupsPush(groups?: TabGroup[], keepalive = false): () => Promise<void> {
+async function applyDeferredRemoteIfAny(): Promise<void> {
+  const deferred = await takeDeferredRemoteGroups()
+  if (!deferred) return
+  if (await hasLocalGroupsEditPending()) {
+    await stashDeferredRemoteGroups(deferred)
+    return
+  }
+  await saveGroupsFromRemote(normalizeAllGroups(deferred.groups))
+  await setSyncMeta({
+    localUpdatedAt: deferred.updatedAt,
+    serverUpdatedAt: deferred.updatedAt,
+  })
+}
+
+function queueGroupsPush(keepalive = false): () => Promise<void> {
   return async () => {
     const token = await getStoredToken()
     if (!token) return
 
-    const toPush = groups ?? (await loadGroups())
+    const toPush = await loadGroups()
     await pushCloudGroups(toPush, { keepalive })
   }
 }
 
-/** Envia grupos à nuvem imediatamente (service worker e flush ao sair da página). */
-export async function flushCloudPush(groups?: TabGroup[]): Promise<void> {
+/** Envia grupos à nuvem imediatamente (sempre lê o storage — snapshot mais recente). */
+export async function flushCloudPush(): Promise<void> {
   try {
-    await groupsPushQueue.runImmediate(queueGroupsPush(groups))
+    await groupsPushQueue.runImmediate(queueGroupsPush())
   } catch (error) {
     console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+    await markGroupsSyncFailed()
     throw error
   }
 }
 
-/** Agenda PUT com debounce; sempre envia o snapshot mais recente. */
-export function scheduleCloudPush(groups?: TabGroup[]): void {
+/** Agenda PUT com debounce; sempre envia o snapshot mais recente do storage local. */
+export function scheduleCloudPush(): void {
   groupsPushQueue.scheduleDebounced(GROUPS_PUSH_DEBOUNCE_MS, async () => {
     try {
-      await queueGroupsPush(groups)()
+      await queueGroupsPush()()
     } catch (error) {
       console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+      await markGroupsSyncFailed()
       throw error
     }
   })
@@ -175,7 +192,7 @@ export function scheduleCloudPush(groups?: TabGroup[]): void {
 export function flushPendingCloudGroupsPush(options?: { keepalive?: boolean }): void {
   if (!groupsPushQueue.hasPending()) return
   void groupsPushQueue
-    .runImmediate(queueGroupsPush(undefined, options?.keepalive === true))
+    .runImmediate(queueGroupsPush(options?.keepalive === true))
     .catch((error) => {
       console.error('[one-tab-manager] Falha ao enviar grupos pendentes:', error)
     })
@@ -201,11 +218,26 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
   const localTime = Date.parse(meta?.localUpdatedAt ?? '1970-01-01T00:00:00.000Z')
   const remoteTime = Date.parse(remote.updatedAt)
 
-  if (
-    hasLocalGroupsEditPending() ||
-    (!groupsSnapshotEqual(local, remote.groups) &&
-      (countTabs(local) > countTabs(remote.groups) || localTime > remoteTime))
-  ) {
+  if (groupsSnapshotEqual(local, remote.groups)) {
+    await clearLocalGroupsEditPending()
+    await setSyncMeta({
+      localUpdatedAt: remote.updatedAt,
+      serverUpdatedAt: remote.updatedAt,
+    })
+    await applyDeferredRemoteIfAny()
+    return local
+  }
+
+  const pending = await hasLocalGroupsEditPending()
+  const remoteClearlyAhead =
+    remoteTime > localTime && countTabs(remote.groups) > countTabs(local)
+  const shouldPushLocal =
+    !remoteClearlyAhead &&
+    (countTabs(local) > countTabs(remote.groups) ||
+      localTime > remoteTime ||
+      (pending && localTime >= remoteTime))
+
+  if (shouldPushLocal) {
     const pushed = await pushCloudGroups(local)
     return pushed.groups
   }
@@ -217,14 +249,16 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
     result = pushed.groups
   } else if (remote.groups.length > 0 && local.length === 0) {
     result = remote.groups
-    await saveGroups(result)
+    await saveGroupsFromRemote(result)
+    await clearLocalGroupsEditPending()
     await setSyncMeta({
       localUpdatedAt: remote.updatedAt,
       serverUpdatedAt: remote.updatedAt,
     })
   } else if (remoteTime >= localTime) {
     result = remote.groups
-    await saveGroups(result)
+    await saveGroupsFromRemote(result)
+    await clearLocalGroupsEditPending()
     await setSyncMeta({
       localUpdatedAt: remote.updatedAt,
       serverUpdatedAt: remote.updatedAt,
@@ -234,6 +268,7 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
     result = pushed.groups
   }
 
+  await applyDeferredRemoteIfAny()
   return result
 }
 
@@ -248,17 +283,17 @@ export async function touchLocalSyncMeta(): Promise<void> {
 /** Salva grupos no storage local e envia à nuvem (push imediato no service worker). */
 export async function saveGroupsAndSyncCloud(groups: TabGroup[]): Promise<void> {
   const token = await getStoredToken()
-  markLocalGroupsEdit()
+  await markLocalGroupsEdit()
   await touchLocalSyncMeta()
-  markLocalGroupsStorageWrite()
-  await saveGroups(groups)
+  await saveGroupsFromLocal(groups)
   if (!token) return
   try {
-    await flushCloudPush(groups)
+    await flushCloudPush()
   } catch (error) {
     console.error('[one-tab-manager] Falha ao sincronizar grupos com a nuvem:', error)
+    await markGroupsSyncFailed()
     throw error
   }
 }
 
-export { markRemoteGroupsApply } from './groupsLocalEdit.js'
+export { markRemoteGroupsApply } from './groupsLocalEdit'

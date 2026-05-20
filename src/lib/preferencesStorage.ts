@@ -1,6 +1,9 @@
 import type { DateRange } from 'react-day-picker'
 
 export const PREFERENCES_STORAGE_KEY = 'oneTabPreferencesV1'
+export const PREFERENCES_WRITE_SOURCE_KEY = 'oneTabPreferencesWriteSourceV1'
+
+export type PreferencesWriteSource = 'local' | 'remote'
 export const THEME_STORAGE_KEY = 'one-tab-manager-theme'
 export const SIMPLE_LAYOUT_STORAGE_KEY = 'one-tab-manager-simple-layout'
 
@@ -93,8 +96,27 @@ export async function loadLocalPreferences(): Promise<UserPreferences> {
   }
 }
 
-export async function saveLocalPreferences(prefs: UserPreferences): Promise<void> {
-  await chrome.storage.local.set({ [PREFERENCES_STORAGE_KEY]: prefs })
+export async function saveLocalPreferencesFromLocal(
+  prefs: UserPreferences,
+): Promise<void> {
+  await chrome.storage.local.set({
+    [PREFERENCES_WRITE_SOURCE_KEY]: 'local' satisfies PreferencesWriteSource,
+    [PREFERENCES_STORAGE_KEY]: prefs,
+  })
+  await mirrorPreferencesToLocalStorage(prefs)
+}
+
+export async function saveLocalPreferencesFromRemote(
+  prefs: UserPreferences,
+): Promise<void> {
+  await chrome.storage.local.set({
+    [PREFERENCES_WRITE_SOURCE_KEY]: 'remote' satisfies PreferencesWriteSource,
+    [PREFERENCES_STORAGE_KEY]: prefs,
+  })
+  await mirrorPreferencesToLocalStorage(prefs)
+}
+
+async function mirrorPreferencesToLocalStorage(prefs: UserPreferences): Promise<void> {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, prefs.theme)
     localStorage.setItem(
@@ -104,4 +126,8 @@ export async function saveLocalPreferences(prefs: UserPreferences): Promise<void
   } catch {
     /* armazenamento indisponível */
   }
+}
+
+export async function saveLocalPreferences(prefs: UserPreferences): Promise<void> {
+  await saveLocalPreferencesFromLocal(prefs)
 }

@@ -5,10 +5,12 @@ import { loadGroups } from './lib/groupsStorage'
 import { saveGroupsAndSyncCloud } from './lib/groupsSync'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
 import { registerRealtimeListeners } from './lib/realtime'
+import { registerSyncOutboxListeners } from './lib/syncOutbox'
 
 registerAuthTabListener()
 registerOAuthPopupTracking()
 registerRealtimeListeners()
+registerSyncOutboxListeners()
 registerLivePixUrlMarkListeners()
 import { calendarDayKey } from './lib/calendarDay'
 import {

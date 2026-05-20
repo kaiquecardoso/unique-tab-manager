@@ -2,6 +2,9 @@ import type { SavedTab, TabGroup } from '../types/tabs'
 import { normalizeTagsArray } from './tags'
 
 export const GROUPS_STORAGE_KEY = 'oneTabGroupsV1'
+export const GROUPS_WRITE_SOURCE_KEY = 'oneTabGroupsWriteSourceV1'
+
+export type GroupsWriteSource = 'local' | 'remote'
 
 export function isTabFavorite(tab: SavedTab): boolean {
   return tab.favorite === true
@@ -52,8 +55,23 @@ export async function loadGroups(): Promise<TabGroup[]> {
   return raw.map((g) => normalizeGroup(g as TabGroup))
 }
 
+export async function saveGroupsFromLocal(groups: TabGroup[]): Promise<void> {
+  await chrome.storage.local.set({
+    [GROUPS_WRITE_SOURCE_KEY]: 'local' satisfies GroupsWriteSource,
+    [GROUPS_STORAGE_KEY]: groups,
+  })
+}
+
+export async function saveGroupsFromRemote(groups: TabGroup[]): Promise<void> {
+  await chrome.storage.local.set({
+    [GROUPS_WRITE_SOURCE_KEY]: 'remote' satisfies GroupsWriteSource,
+    [GROUPS_STORAGE_KEY]: groups,
+  })
+}
+
+/** @deprecated Prefira saveGroupsFromLocal ou saveGroupsFromRemote. */
 export async function saveGroups(groups: TabGroup[]): Promise<void> {
-  await chrome.storage.local.set({ [GROUPS_STORAGE_KEY]: groups })
+  await saveGroupsFromLocal(groups)
 }
 
 /** Garante campos derivados (ex.: `addedAt`) ao sincronizar do storage em tempo real. */
