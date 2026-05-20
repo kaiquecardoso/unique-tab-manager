@@ -64,6 +64,7 @@ import {
   type PublicUser,
 } from './lib/api'
 import {
+  flushPendingCloudGroupsPush,
   scheduleCloudPush,
   syncGroupsWithCloud,
   touchLocalSyncMeta,
@@ -78,6 +79,13 @@ import {
   type UserPreferences,
 } from './lib/preferencesStorage'
 import {
+  markLocalPreferencesEdit,
+  markRemotePreferencesApply,
+  consumeLocalPreferencesEdit,
+  consumeSkipPreferencesCloudPush,
+} from './lib/preferencesLocalEdit'
+import {
+  flushPendingPreferencesPush,
   schedulePreferencesPush,
   syncPreferencesWithCloud,
   type PreferencesCloudPayload,
@@ -1071,7 +1079,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [simpleLayout, setSimpleLayout] = useState(false)
   const prefsHydratedRef = useRef(false)
-  const skipPrefsPushRef = useRef(false)
   const cloudSyncInProgressRef = useRef(false)
   const authRefreshInFlightRef = useRef<Promise<void> | null>(null)
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
@@ -1287,17 +1294,19 @@ function App() {
     return () => cancelAnimationFrame(id)
   }, [authModalMounted])
 
-  const applyPreferences = useCallback((prefs: UserPreferences) => {
-    skipPrefsPushRef.current = true
-    setDarkMode(prefs.theme === 'dark')
-    setSimpleLayout(prefs.simpleLayout)
-    setSearch(prefs.search)
-    setActiveTagFilters(prefs.activeTagFilters)
-    setGroupDateRange(parseDateRange(prefs.groupDateRange))
-    requestAnimationFrame(() => {
-      skipPrefsPushRef.current = false
-    })
-  }, [])
+  const applyPreferences = useCallback(
+    (prefs: UserPreferences, fromRemote = false) => {
+      if (fromRemote) {
+        markRemotePreferencesApply()
+      }
+      setDarkMode(prefs.theme === 'dark')
+      setSimpleLayout(prefs.simpleLayout)
+      setSearch(prefs.search)
+      setActiveTagFilters(prefs.activeTagFilters)
+      setGroupDateRange(parseDateRange(prefs.groupDateRange))
+    },
+    [],
+  )
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -1321,11 +1330,13 @@ function App() {
   }, [applyPreferences])
 
   useEffect(() => {
-    if (
-      !prefsHydratedRef.current ||
-      skipPrefsPushRef.current ||
-      cloudSyncInProgressRef.current
-    ) {
+    if (!prefsHydratedRef.current || cloudSyncInProgressRef.current) {
+      return
+    }
+    if (consumeSkipPreferencesCloudPush()) {
+      return
+    }
+    if (!consumeLocalPreferencesEdit()) {
       return
     }
 
@@ -1446,6 +1457,28 @@ function App() {
   }, [refreshAuthSession])
 
   useEffect(() => {
+    if (!authUser) return
+
+    const flushPendingToCloud = () => {
+      flushPendingCloudGroupsPush({ keepalive: true })
+      flushPendingPreferencesPush({ keepalive: true })
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingToCloud()
+      }
+    }
+
+    window.addEventListener('pagehide', flushPendingToCloud)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('pagehide', flushPendingToCloud)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [authUser])
+
+  useEffect(() => {
     const onMessage = (message: unknown) => {
       if (!message || typeof message !== 'object' || !('type' in message)) return
 
@@ -1464,7 +1497,7 @@ function App() {
 
       if (message.type === 'realtime:preferences' && 'payload' in message) {
         const payload = message.payload as PreferencesCloudPayload
-        applyPreferences(payload.preferences)
+        applyPreferences(payload.preferences, true)
         setSyncStatus('ok')
         setSyncMessage('Preferências atualizadas')
       }
@@ -1511,7 +1544,7 @@ function App() {
           | UserPreferences
           | undefined
         if (next && typeof next === 'object') {
-          applyPreferences(next)
+          applyPreferences(next, true)
         }
       }
     }
@@ -2169,7 +2202,10 @@ function App() {
             type="search"
             placeholder="Buscar por título, URL ou tag…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              markLocalPreferencesEdit()
+              setSearch(e.target.value)
+            }}
             autoComplete="off"
           />
         </label>
@@ -2195,7 +2231,10 @@ function App() {
           <DayPicker
             mode="range"
             selected={groupDateRange}
-            onSelect={setGroupDateRange}
+            onSelect={(range) => {
+              markLocalPreferencesEdit()
+              setGroupDateRange(range)
+            }}
             locale={ptBR}
             weekStartsOn={1}
             showOutsideDays
@@ -2208,7 +2247,10 @@ function App() {
               <button
                 type="button"
                 className="sidebar-calendar-clear"
-                onClick={() => setGroupDateRange(undefined)}
+                onClick={() => {
+                  markLocalPreferencesEdit()
+                  setGroupDateRange(undefined)
+                }}
               >
                 Limpar
               </button>
@@ -2238,6 +2280,7 @@ function App() {
                   aria-checked={darkMode}
                   aria-labelledby="theme-switch-label"
                   onClick={() => {
+                    markLocalPreferencesEdit()
                     void toggleThemeWithViewTransition(
                       setDarkMode,
                       !darkMode,
@@ -2262,7 +2305,10 @@ function App() {
                   role="switch"
                   aria-checked={simpleLayout}
                   aria-labelledby="compact-mode-switch-label"
-                  onClick={() => setSimpleLayout((v) => !v)}
+                  onClick={() => {
+                    markLocalPreferencesEdit()
+                    setSimpleLayout((v) => !v)
+                  }}
                 >
                   <span className="theme-switch__knob" aria-hidden />
                 </button>
@@ -2500,7 +2546,10 @@ function App() {
                 <button
                   type="button"
                   className="tag-filter-clear"
-                  onClick={() => setActiveTagFilters([])}
+                  onClick={() => {
+                    markLocalPreferencesEdit()
+                    setActiveTagFilters([])
+                  }}
                 >
                   Limpar filtros
                 </button>
@@ -2516,6 +2565,7 @@ function App() {
                     className={`tag-filter-pill${on ? ' tag-filter-pill--active' : ''}`}
                     aria-pressed={on}
                     onClick={() => {
+                      markLocalPreferencesEdit()
                       setActiveTagFilters((prev) =>
                         prev.includes(tag)
                           ? prev.filter((x) => x !== tag)

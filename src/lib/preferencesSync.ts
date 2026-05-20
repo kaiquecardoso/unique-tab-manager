@@ -1,5 +1,7 @@
 import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
+import { createCloudSyncQueue } from './cloudSyncQueue'
+import { markRemotePreferencesApply } from './preferencesLocalEdit'
 import {
   DEFAULT_PREFERENCES,
   loadLocalPreferences,
@@ -8,6 +10,10 @@ import {
 } from './preferencesStorage'
 
 export const PREFERENCES_SYNC_META_KEY = 'oneTabPreferencesSyncV1'
+
+const PREFERENCES_PUSH_DEBOUNCE_MS = 400
+
+const preferencesPushQueue = createCloudSyncQueue()
 
 export type PreferencesCloudPayload = {
   preferences: UserPreferences
@@ -70,6 +76,7 @@ export async function fetchCloudPreferences(): Promise<PreferencesCloudPayload> 
 
 export async function pushCloudPreferences(
   preferences: UserPreferences,
+  options?: { keepalive?: boolean },
 ): Promise<PreferencesCloudPayload> {
   const headers = await authHeaders()
   if (!headers) throw new Error('Não autenticado')
@@ -78,6 +85,7 @@ export async function pushCloudPreferences(
   const response = await fetch(`${getApiUrl()}/preferences`, {
     method: 'PUT',
     headers,
+    keepalive: options?.keepalive === true,
     body: JSON.stringify({
       preferences,
       updatedAt: meta?.localUpdatedAt,
@@ -96,30 +104,46 @@ export async function pushCloudPreferences(
   return data
 }
 
-let pushTimer: ReturnType<typeof setTimeout> | null = null
+function queuePreferencesPush(keepalive = false): () => Promise<void> {
+  return async () => {
+    const token = await getStoredToken()
+    if (!token) return
 
-export function schedulePreferencesPush(preferences: UserPreferences): void {
-  if (pushTimer) clearTimeout(pushTimer)
+    const preferences = await loadLocalPreferences()
+    const now = new Date().toISOString()
+    await setSyncMeta({
+      localUpdatedAt: now,
+      serverUpdatedAt: (await getSyncMeta())?.serverUpdatedAt ?? null,
+    })
+    await pushCloudPreferences(preferences, { keepalive })
+  }
+}
 
-  pushTimer = setTimeout(() => {
-    pushTimer = null
-    void (async () => {
-      const token = await getStoredToken()
-      if (!token) return
+export function schedulePreferencesPush(_preferences: UserPreferences): void {
+  preferencesPushQueue.scheduleDebounced(
+    PREFERENCES_PUSH_DEBOUNCE_MS,
+    queuePreferencesPush(),
+  )
+}
 
-      const now = new Date().toISOString()
-      await setSyncMeta({
-        localUpdatedAt: now,
-        serverUpdatedAt: (await getSyncMeta())?.serverUpdatedAt ?? null,
-      })
-      await pushCloudPreferences(preferences)
-    })()
-  }, 600)
+export async function flushPreferencesPush(): Promise<void> {
+  await preferencesPushQueue.runImmediate(queuePreferencesPush())
+}
+
+export function flushPendingPreferencesPush(options?: { keepalive?: boolean }): void {
+  if (!preferencesPushQueue.hasPending()) return
+  void preferencesPushQueue
+    .runImmediate(queuePreferencesPush(options?.keepalive === true))
+    .catch((error) => {
+      console.error('[one-tab-manager] Falha ao enviar preferências pendentes:', error)
+    })
 }
 
 export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
   const token = await getStoredToken()
   if (!token) return loadLocalPreferences()
+
+  await preferencesPushQueue.flush()
 
   const local = await loadLocalPreferences()
   const meta = await getSyncMeta()
@@ -167,6 +191,7 @@ export async function syncPreferencesWithCloud(): Promise<UserPreferences> {
 export async function applyCloudPreferences(
   payload: PreferencesCloudPayload,
 ): Promise<UserPreferences> {
+  markRemotePreferencesApply()
   const prefs = payload.preferences
   await saveLocalPreferences(prefs)
   await setSyncMeta({

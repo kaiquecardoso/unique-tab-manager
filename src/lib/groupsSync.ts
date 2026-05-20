@@ -1,9 +1,14 @@
 import type { TabGroup } from '../types/tabs'
 import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
+import { createCloudSyncQueue } from './cloudSyncQueue'
 import { loadGroups, normalizeAllGroups, saveGroups } from './groupsStorage'
 
 export const SYNC_META_STORAGE_KEY = 'oneTabGroupsSyncV1'
+
+const GROUPS_PUSH_DEBOUNCE_MS = 400
+
+const groupsPushQueue = createCloudSyncQueue()
 
 export type GroupsCloudPayload = {
   groups: TabGroup[]
@@ -58,7 +63,10 @@ export async function fetchCloudGroups(): Promise<GroupsCloudPayload> {
   }
 }
 
-export async function pushCloudGroups(groups: TabGroup[]): Promise<GroupsCloudPayload> {
+export async function pushCloudGroups(
+  groups: TabGroup[],
+  options?: { keepalive?: boolean },
+): Promise<GroupsCloudPayload> {
   const headers = await authHeaders()
   if (!headers) {
     throw new Error('Não autenticado')
@@ -68,6 +76,7 @@ export async function pushCloudGroups(groups: TabGroup[]): Promise<GroupsCloudPa
   const response = await fetch(`${getApiUrl()}/groups`, {
     method: 'PUT',
     headers,
+    keepalive: options?.keepalive === true,
     body: JSON.stringify({
       groups,
       updatedAt: meta?.localUpdatedAt,
@@ -92,33 +101,43 @@ export async function pushCloudGroups(groups: TabGroup[]): Promise<GroupsCloudPa
   }
 }
 
-let pushTimer: ReturnType<typeof setTimeout> | null = null
+function queueGroupsPush(groups?: TabGroup[], keepalive = false): () => Promise<void> {
+  return async () => {
+    const token = await getStoredToken()
+    if (!token) return
 
-/** Envia grupos à nuvem imediatamente (obrigatório no service worker — timers podem não disparar). */
-export async function flushCloudPush(groups?: TabGroup[]): Promise<void> {
-  if (pushTimer) {
-    clearTimeout(pushTimer)
-    pushTimer = null
+    const toPush = groups ?? (await loadGroups())
+    await pushCloudGroups(toPush, { keepalive })
   }
-
-  const token = await getStoredToken()
-  if (!token) return
-
-  const toPush = groups ?? (await loadGroups())
-  await pushCloudGroups(toPush)
 }
 
-export function scheduleCloudPush(groups?: TabGroup[]): void {
-  if (pushTimer) {
-    clearTimeout(pushTimer)
+/** Envia grupos à nuvem imediatamente (service worker e flush ao sair da página). */
+export async function flushCloudPush(groups?: TabGroup[]): Promise<void> {
+  try {
+    await groupsPushQueue.runImmediate(queueGroupsPush(groups))
+  } catch (error) {
+    console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+    throw error
   }
+}
 
-  pushTimer = setTimeout(() => {
-    pushTimer = null
-    void flushCloudPush(groups).catch((error) => {
-      console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+/** Agenda PUT com debounce; sempre envia o snapshot mais recente. */
+export function scheduleCloudPush(groups?: TabGroup[]): void {
+  groupsPushQueue.scheduleDebounced(GROUPS_PUSH_DEBOUNCE_MS, queueGroupsPush(groups))
+}
+
+/** Dispara PUT pendente antes de fechar/recarregar a página. */
+export function flushPendingCloudGroupsPush(options?: { keepalive?: boolean }): void {
+  if (!groupsPushQueue.hasPending()) return
+  void groupsPushQueue
+    .runImmediate(queueGroupsPush(undefined, options?.keepalive === true))
+    .catch((error) => {
+      console.error('[one-tab-manager] Falha ao enviar grupos pendentes:', error)
     })
-  }, 800)
+}
+
+export function hasPendingGroupsCloudPush(): boolean {
+  return groupsPushQueue.hasPending()
 }
 
 /** Mescla nuvem ↔ local após login ou sync manual. Retorna grupos finais. */
@@ -127,6 +146,8 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
   if (!token) {
     return loadGroups()
   }
+
+  await groupsPushQueue.flush()
 
   const local = await loadGroups()
   const meta = await getSyncMeta()
