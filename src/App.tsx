@@ -136,6 +136,21 @@ function faviconUrl(url: string): string {
   }
 }
 
+/** Modo normal: URL completa sem `https://www.` / `http://www.`. Compacto: só hostname. */
+function formatTabHostLabel(url: string, simpleLayout: boolean): string {
+  try {
+    if (simpleLayout) {
+      return new URL(url).hostname.replace(/^www\./i, '')
+    }
+    return url
+      .trim()
+      .replace(/^https:\/\/www\./i, '')
+      .replace(/^http:\/\/www\./i, '')
+  } catch {
+    return url
+  }
+}
+
 function formatShortDate(d: Date): string {
   return new Intl.DateTimeFormat('pt-BR', {
     weekday: 'short',
@@ -698,12 +713,7 @@ function TabRow({
     setTagDropdownOpen(false)
   }
 
-  let host: string
-  try {
-    host = new URL(t.url).hostname.replace(/^www\./, '')
-  } catch {
-    host = t.url
-  }
+  const hostLabel = formatTabHostLabel(t.url, simpleLayout)
 
   function openTab() {
     onOpenTab()
@@ -797,8 +807,8 @@ function TabRow({
             </div>
             {!simpleLayout ? (
               <div className="tab-subline">
-                <span className="tab-host" title={host}>
-                  {host}
+                <span className="tab-host" title={t.url}>
+                  {hostLabel}
                 </span>
                 <span className="tab-subline-sep" aria-hidden>
                   ·
