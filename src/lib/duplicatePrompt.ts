@@ -73,6 +73,8 @@ export function showDuplicatePrompt(
   const existingLabel = normalizeTitle(options.existingTitle) || options.url
   const newLabel = normalizeTitle(options.newTitle)
   const savedAtLabel = formatSavedAt(options.existingAddedAt)
+  const multiDuplicateBatch =
+    options.batchMode === true && (options.progress?.total ?? 0) > 1
 
   return new Promise((resolve) => {
     const mountTarget = document.body ?? document.documentElement
@@ -135,7 +137,7 @@ export function showDuplicatePrompt(
 
     const heading = document.createElement('div')
     heading.textContent =
-      options.progress && options.progress.total > 0
+      multiDuplicateBatch && options.progress
         ? `${copy.heading} (${options.progress.current} de ${options.progress.total})`
         : copy.heading
     heading.style.fontSize = '15px'
@@ -143,7 +145,7 @@ export function showDuplicatePrompt(
     heading.style.margin = '0 0 8px 0'
 
     const hint = document.createElement('div')
-    hint.textContent = options.batchMode
+    hint.textContent = multiDuplicateBatch
       ? `${copy.hint} ${copy.batchHint}`
       : copy.hint
     hint.style.fontSize = '13px'
@@ -296,7 +298,7 @@ export function showDuplicatePrompt(
     }
 
     actions.appendChild(
-      makeButton(options.batchMode ? copy.skipThis : copy.cancel, 'cancel'),
+      makeButton(multiDuplicateBatch ? copy.skipThis : copy.cancel, 'cancel'),
     )
     actions.appendChild(makeButton(copy.keepOlder, 'keep-old'))
     actions.appendChild(makeButton(copy.keepNewer, 'keep-new', true))

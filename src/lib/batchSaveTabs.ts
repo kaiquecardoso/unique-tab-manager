@@ -133,12 +133,15 @@ export async function saveBrowserTabsToStorage(
         tab.id,
         normalizeTitle(tab.title) || tab.url,
         {
-          batchMode: true,
+          batchMode: duplicatePromptTotal > 1,
           groups,
-          progress: {
-            current: duplicatePromptIndex,
-            total: duplicatePromptTotal,
-          },
+          progress:
+            duplicatePromptTotal > 1
+              ? {
+                  current: duplicatePromptIndex,
+                  total: duplicatePromptTotal,
+                }
+              : undefined,
         },
       )
       groups = resolved.groups

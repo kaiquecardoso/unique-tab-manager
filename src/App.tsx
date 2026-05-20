@@ -46,6 +46,13 @@ import {
   restoreTrashedEntry,
 } from './lib/trashOps'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
+import {
+  groupTrashEntriesBySavedDay,
+  isTrashDayExpanded,
+  trashDayKey,
+  trashDayLatestDeletedAt,
+  trashDayTabCount,
+} from './lib/groupTrashByDay'
 import { buildDayViewedStatsByLocalDay } from './lib/tabsPerCalendarDay'
 import {
   findOpenBrowserTab,
@@ -359,15 +366,49 @@ function IconPencil() {
   )
 }
 
-function IconClearViewed() {
+function IconEye() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M3 3l18 18M10.58 10.58A2 2 0 0 0 12 16a2 2 0 0 0 1.42-.58M9.88 9.88A4.24 4.24 0 0 1 12 8c2.21 0 4 1.79 4 4 0 .73-.2 1.41-.54 2M6.1 6.1C4.21 7.39 3 9.58 3 12c0 4.97 4.03 9 9 9 2.42 0 4.62-.95 6.1-2.1"
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
+function IconEyeOff() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7S2 12 2 12Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M4 4l16 16"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
       />
     </svg>
   )
@@ -535,160 +576,6 @@ function IconClose() {
 
 const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
 
-type ExclusionMenuAction = 'remove-duplicates' | 'prune-viewed' | 'all'
-
-function SidebarExclusionDropdown({
-  duplicateTabCount,
-  prunableViewedCount,
-  hasSavedGroups,
-  pruneMonths,
-  onSelectAction,
-}: {
-  duplicateTabCount: number
-  prunableViewedCount: number
-  hasSavedGroups: boolean
-  pruneMonths: number
-  onSelectAction: (action: ExclusionMenuAction) => void
-}) {
-  const menuId = useId()
-  const rootRef = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-
-    function handlePointerDown(event: PointerEvent) {
-      const root = rootRef.current
-      if (!root?.contains(event.target as Node)) setOpen(false)
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown, true)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
-  function pick(action: ExclusionMenuAction) {
-    setOpen(false)
-    onSelectAction(action)
-  }
-
-  const duplicateHint =
-    duplicateTabCount === 0
-      ? 'Nenhuma URL repetida'
-      : duplicateTabCount === 1
-        ? '1 aba com URL repetida'
-        : `${duplicateTabCount} abas com URL repetida`
-
-  const pruneHint =
-    prunableViewedCount === 0
-      ? `Nenhuma vista há mais de ${pruneMonths} meses`
-      : prunableViewedCount === 1
-        ? '1 aba vista antiga (exceto favoritos)'
-        : `${prunableViewedCount} abas vistas antigas (exceto favoritos)`
-
-  return (
-    <div
-      ref={rootRef}
-      className={`sidebar-exclusion-menu${open ? ' sidebar-exclusion-menu--open' : ''}`}
-    >
-      <button
-        type="button"
-        className="btn btn-outline btn-danger sidebar-exclusion-menu-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <IconTrash />
-        <span className="sidebar-exclusion-menu-trigger-label">Exclusão</span>
-        <IconChevron open={open} />
-      </button>
-      <div
-        id={menuId}
-        role="menu"
-        className={`sidebar-exclusion-menu-panel${open ? ' sidebar-exclusion-menu-panel--open' : ''}`}
-        aria-label="Ações de exclusão"
-      >
-        <button
-          type="button"
-          role="menuitem"
-          className="sidebar-exclusion-menu-item"
-          disabled={duplicateTabCount === 0}
-          onClick={() => pick('remove-duplicates')}
-        >
-          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
-            <IconDedupe />
-          </span>
-          <span className="sidebar-exclusion-menu-item-body">
-            <span className="sidebar-exclusion-menu-item-label">
-              Remover duplicadas
-            </span>
-            <span className="sidebar-exclusion-menu-item-hint">{duplicateHint}</span>
-          </span>
-          {duplicateTabCount > 0 ? (
-            <span className="sidebar-exclusion-menu-item-count">
-              {duplicateTabCount}
-            </span>
-          ) : null}
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className="sidebar-exclusion-menu-item"
-          disabled={prunableViewedCount === 0}
-          onClick={() => pick('prune-viewed')}
-        >
-          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
-            <IconPruneViewed />
-          </span>
-          <span className="sidebar-exclusion-menu-item-body">
-            <span className="sidebar-exclusion-menu-item-label">
-              Limpar vistas antigas
-            </span>
-            <span className="sidebar-exclusion-menu-item-hint">{pruneHint}</span>
-          </span>
-          {prunableViewedCount > 0 ? (
-            <span className="sidebar-exclusion-menu-item-count">
-              {prunableViewedCount}
-            </span>
-          ) : null}
-        </button>
-        <div
-          className="sidebar-exclusion-menu-divider"
-          role="separator"
-          aria-hidden
-        />
-        <button
-          type="button"
-          role="menuitem"
-          className="sidebar-exclusion-menu-item sidebar-exclusion-menu-item--danger"
-          disabled={!hasSavedGroups}
-          onClick={() => pick('all')}
-        >
-          <span className="sidebar-exclusion-menu-item-icon" aria-hidden>
-            <IconTrash />
-          </span>
-          <span className="sidebar-exclusion-menu-item-body">
-            <span className="sidebar-exclusion-menu-item-label">
-              Mover tudo para a lixeira
-            </span>
-            <span className="sidebar-exclusion-menu-item-hint">
-              Todos os grupos e abas salvas
-            </span>
-          </span>
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function SidebarDropdownSection({
   id,
   title,
@@ -740,11 +627,12 @@ function TabRow({
   onRequestRemove,
   onRequestEditTitle,
   onOpenTab,
-  onClearViewed,
+  onToggleViewed,
   onSetTags,
   existingTagOptions,
   showFavorite = false,
   onToggleFavorite,
+  onRestore,
   tagsReadOnly = false,
   removeLabel = 'Mover para a lixeira',
 }: {
@@ -753,12 +641,13 @@ function TabRow({
   onRequestRemove: () => void
   onRequestEditTitle: () => void
   onOpenTab: () => void
-  onClearViewed: () => void
+  onToggleViewed: () => void
   onSetTags: (tags: string[]) => void
   /** Tags já usadas em alguma aba (ordenadas), sugeridas no mesmo campo de nova tag. */
   existingTagOptions: string[]
   showFavorite?: boolean
   onToggleFavorite?: () => void
+  onRestore?: () => void
   tagsReadOnly?: boolean
   removeLabel?: string
 }) {
@@ -885,20 +774,26 @@ function TabRow({
               >
                 <IconPencil />
               </button>
-              {t.viewed ? (
-                <button
-                  type="button"
-                  className="tab-title-edit tab-title-clear-viewed"
-                  aria-label={`Desmarcar ${t.title} como visualizado`}
-                  title="Desmarcar como visualizado"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onClearViewed()
-                  }}
-                >
-                  <IconClearViewed />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className={`tab-title-edit tab-title-viewed-toggle${t.viewed ? ' tab-title-viewed-toggle--viewed' : ''}`}
+                aria-label={
+                  t.viewed
+                    ? `Desmarcar ${t.title} como visualizado`
+                    : `Marcar ${t.title} como visualizado`
+                }
+                title={
+                  t.viewed
+                    ? 'Desmarcar como visualizado'
+                    : 'Marcar como visualizado'
+                }
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleViewed()
+                }}
+              >
+                {t.viewed ? <IconEyeOff /> : <IconEye />}
+              </button>
             </div>
             {!simpleLayout ? (
               <div className="tab-subline">
@@ -1014,6 +909,20 @@ function TabRow({
           </span>
           ) : null}
         </div>
+        {onRestore ? (
+          <button
+            type="button"
+            className="tab-row-restore"
+            aria-label="Restaurar"
+            title="Restaurar"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRestore()
+            }}
+          >
+            <IconRestore />
+          </button>
+        ) : null}
         {showFavorite && onToggleFavorite ? (
           <button
             type="button"
@@ -1091,6 +1000,31 @@ const MAIN_VIEW_LABELS: Record<MainView, string> = {
   trash: 'Lixeira',
 }
 
+const MAIN_VIEW_SHORT_LABELS: Record<MainView, string> = {
+  saved: 'Salvas',
+  favorites: 'Favoritos',
+  trash: 'Lixeira',
+}
+
+function MainViewTabIcon({ view }: { view: MainView }) {
+  if (view === 'saved') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+        />
+      </svg>
+    )
+  }
+  if (view === 'favorites') {
+    return <IconStar filled={false} />
+  }
+  return <IconTrash />
+}
+
 function App() {
   const [groups, setGroups] = useState<TabGroup[]>([])
   const [trash, setTrash] = useState<TrashedEntry[]>([])
@@ -1111,9 +1045,10 @@ function App() {
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
     appearance: false,
+    exclusion: false,
   })
 
-  function togglePreferenceSection(section: 'backup' | 'appearance') {
+  function togglePreferenceSection(section: 'backup' | 'appearance' | 'exclusion') {
     setPreferenceSectionsOpen((prev) => ({
       ...prev,
       [section]: !prev[section],
@@ -1963,10 +1898,26 @@ function App() {
     )
   }, [trash, search])
 
+  const visibleTrashByDay = useMemo(
+    () => groupTrashEntriesBySavedDay(visibleTrash),
+    [visibleTrash],
+  )
+
+  const favoriteTabCount = useMemo(
+    () => favoriteGroups.reduce((n, g) => n + g.tabs.length, 0),
+    [favoriteGroups],
+  )
+
   const trashTabCount = useMemo(
     () => trash.reduce((n, e) => n + e.group.tabs.length, 0),
     [trash],
   )
+
+  const mainViewTabCounts: Pick<Record<MainView, number>, 'favorites' | 'trash'> =
+    {
+      favorites: favoriteTabCount,
+      trash: trashTabCount,
+    }
 
   const duplicateTabCount = useMemo(
     () => countDuplicateTabs(groups),
@@ -2153,12 +2104,17 @@ function App() {
     persist(next)
   }
 
-  function toggleTrashExpanded(trashId: string) {
+  function toggleTrashDayExpanded(dayKey: string) {
+    const bucket = trash.filter(
+      (e) => trashDayKey(e.restore.savedAt) === dayKey,
+    )
+    if (bucket.length === 0) return
+    const nextExpanded = !bucket.some((e) => e.group.expanded)
     persistTrash(
       trash.map((e) =>
-        e.id !== trashId
+        trashDayKey(e.restore.savedAt) !== dayKey
           ? e
-          : { ...e, group: { ...e.group, expanded: !e.group.expanded } },
+          : { ...e, group: { ...e.group, expanded: nextExpanded } },
       ),
     )
   }
@@ -2540,6 +2496,79 @@ function App() {
               <p className="sidebar-section-footnote">{groupsImportStatus}</p>
             ) : null}
           </SidebarDropdownSection>
+
+          <SidebarDropdownSection
+            id="exclusion"
+            title="Exclusão"
+            open={preferenceSectionsOpen.exclusion}
+            onToggle={() => togglePreferenceSection('exclusion')}
+          >
+            <div className="sidebar-action-list">
+              <button
+                type="button"
+                className="sidebar-action-row"
+                disabled={duplicateTabCount === 0}
+                onClick={() => openConfirmDeleteModal({ variant: 'remove-duplicates' })}
+              >
+                <span className="sidebar-action-row-icon" aria-hidden>
+                  <IconDedupe />
+                </span>
+                <span className="sidebar-action-row-body">
+                  <span className="sidebar-action-row-label">Remover duplicadas</span>
+                  <span className="sidebar-action-row-hint">
+                    {duplicateTabCount === 0
+                      ? 'Nenhuma URL repetida'
+                      : duplicateTabCount === 1
+                        ? '1 aba com URL repetida'
+                        : `${duplicateTabCount} abas com URL repetida`}
+                  </span>
+                </span>
+              </button>
+              <div className="sidebar-section-divider" role="separator" aria-hidden />
+              <button
+                type="button"
+                className="sidebar-action-row"
+                disabled={prunableViewedCount === 0}
+                onClick={() => openConfirmDeleteModal({ variant: 'prune-viewed' })}
+              >
+                <span className="sidebar-action-row-icon" aria-hidden>
+                  <IconPruneViewed />
+                </span>
+                <span className="sidebar-action-row-body">
+                  <span className="sidebar-action-row-label">Limpar vistas antigas</span>
+                  <span className="sidebar-action-row-hint">
+                    {prunableViewedCount === 0
+                      ? `Nenhuma vista há mais de ${DEFAULT_VIEWED_PRUNE_MONTHS} meses`
+                      : prunableViewedCount === 1
+                        ? '1 aba vista antiga (exceto favoritos)'
+                        : `${prunableViewedCount} abas vistas antigas (exceto favoritos)`}
+                  </span>
+                </span>
+              </button>
+              <div className="sidebar-section-divider" role="separator" aria-hidden />
+              <button
+                type="button"
+                className="sidebar-action-row sidebar-action-row--danger"
+                disabled={groups.length === 0}
+                onClick={() => openConfirmDeleteModal({ variant: 'all' })}
+              >
+                <span
+                  className="sidebar-action-row-icon sidebar-action-row-icon--danger"
+                  aria-hidden
+                >
+                  <IconTrash />
+                </span>
+                <span className="sidebar-action-row-body">
+                  <span className="sidebar-action-row-label">
+                    Mover tudo para a lixeira
+                  </span>
+                  <span className="sidebar-action-row-hint">
+                    Todos os grupos e abas salvas
+                  </span>
+                </span>
+              </button>
+            </div>
+          </SidebarDropdownSection>
         </section>
 
         <div className="sidebar-actions">
@@ -2556,13 +2585,6 @@ function App() {
               {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
             </button>
           ) : null}
-          <SidebarExclusionDropdown
-            duplicateTabCount={duplicateTabCount}
-            prunableViewedCount={prunableViewedCount}
-            hasSavedGroups={groups.length > 0}
-            pruneMonths={DEFAULT_VIEWED_PRUNE_MONTHS}
-            onSelectAction={(action) => openConfirmDeleteModal({ variant: action })}
-          />
         </div>
 
         <p className="sidebar-hint">
@@ -2687,10 +2709,22 @@ function App() {
                   aria-selected={mainView === view}
                   onClick={() => setMainView(view)}
                 >
-                  {MAIN_VIEW_LABELS[view]}
-                  {view === 'trash' && trash.length > 0 ? (
-                    <span className="main-tab-badge">{trashTabCount}</span>
-                  ) : null}
+                  <span className="main-tab-leading">
+                    <span className="main-tab-icon" aria-hidden>
+                      <MainViewTabIcon view={view} />
+                    </span>
+                    {view !== 'saved' && mainViewTabCounts[view] > 0 ? (
+                      <span className="main-tab-badge">
+                        {mainViewTabCounts[view]}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="main-tab-label main-tab-label--long">
+                    {MAIN_VIEW_LABELS[view]}
+                  </span>
+                  <span className="main-tab-label main-tab-label--short">
+                    {MAIN_VIEW_SHORT_LABELS[view]}
+                  </span>
                 </button>
               ))}
             </div>
@@ -2772,28 +2806,29 @@ function App() {
                   : 'Nenhum resultado na lixeira para essa busca.'}
               </div>
             ) : (
-              visibleTrash.map((entry) => {
-                const g = entry.group
-                const deleted = new Date(entry.deletedAt)
+              visibleTrashByDay.map((day) => {
+                const expanded = isTrashDayExpanded(day)
+                const tabCount = trashDayTabCount(day)
+                const deleted = trashDayLatestDeletedAt(day)
                 const groupTitle =
-                  g.customTitle ??
-                  formatGroupPrimary(new Date(entry.restore.savedAt))
+                  day.customTitle ??
+                  formatGroupPrimary(new Date(day.savedAt))
                 return (
                   <article
-                    key={entry.id}
+                    key={day.dayKey}
                     className={`group-card group-card--trash${simpleLayout ? ' group-card--simple' : ''}`}
                   >
                     <div className="group-header">
                       <button
                         type="button"
                         className="group-header-lead"
-                        id={`trash-header-${entry.id}`}
-                        title={g.expanded ? 'Recolher' : 'Expandir'}
-                        onClick={() => toggleTrashExpanded(entry.id)}
-                        aria-expanded={g.expanded}
-                        aria-controls={`trash-panel-${entry.id}`}
+                        id={`trash-header-${day.dayKey}`}
+                        title={expanded ? 'Recolher' : 'Expandir'}
+                        onClick={() => toggleTrashDayExpanded(day.dayKey)}
+                        aria-expanded={expanded}
+                        aria-controls={`trash-panel-${day.dayKey}`}
                       >
-                        <IconChevron open={g.expanded} />
+                        <IconChevron open={expanded} />
                         <span className="group-folder-icon" aria-hidden>
                           <IconFolder />
                         </span>
@@ -2805,90 +2840,64 @@ function App() {
                         <IconClock />
                         <span>
                           Excluído {formatRelativeAgo(deleted)} ·{' '}
-                          {entry.kind === 'group' ? 'grupo' : 'aba'}
+                          {tabCount === 1 ? '1 aba' : `${tabCount} abas`}
                         </span>
                       </div>
-                      <span className="group-badge">{g.tabs.length}</span>
-                      <div className="group-header-tools">
-                        <button
-                          type="button"
-                          className="group-tool-btn"
-                          aria-label="Restaurar"
-                          title="Restaurar"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            restoreFromTrash(entry.id)
-                          }}
-                        >
-                          <IconRestore />
-                        </button>
-                        <button
-                          type="button"
-                          className="group-tool-btn group-tool-btn--danger"
-                          aria-label="Apagar permanentemente"
-                          title="Apagar permanentemente"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openConfirmDeleteModal({
-                              variant: 'trash-entry',
-                              trashId: entry.id,
-                            })
-                          }}
-                        >
-                          <IconTrash />
-                        </button>
-                      </div>
+                      <span className="group-badge">{tabCount}</span>
                     </div>
                     <div
-                      className={`group-accordion${g.expanded ? ' group-accordion--open' : ''}`}
-                      id={`trash-panel-${entry.id}`}
+                      className={`group-accordion${expanded ? ' group-accordion--open' : ''}`}
+                      id={`trash-panel-${day.dayKey}`}
                       role="region"
-                      aria-labelledby={`trash-header-${entry.id}`}
+                      aria-labelledby={`trash-header-${day.dayKey}`}
                     >
                       <div
                         className="group-accordion-inner"
-                        inert={!g.expanded}
+                        inert={!expanded}
                       >
                         <div className="group-body">
-                          {g.tabs.map((t) => (
-                            <TabRow
-                              key={t.id}
-                              tab={t}
-                              simpleLayout={simpleLayout}
-                              existingTagOptions={[]}
-                              tagsReadOnly
-                              removeLabel="Apagar permanentemente"
-                              onRequestRemove={() =>
-                                openConfirmDeleteModal({
-                                  variant: 'trash-entry',
-                                  trashId: entry.id,
-                                })
-                              }
-                              onSetTags={() => {}}
-                              onRequestEditTitle={() =>
-                                openEditTabTitleModal({
-                                  groupId: entry.restore.groupId,
-                                  tabId: t.id,
-                                  title: t.title,
-                                })
-                              }
-                              onOpenTab={() =>
-                                void handleOpenSavedTab(
-                                  entry.restore.groupId,
-                                  t.id,
-                                  t.url,
-                                  t.viewed === true,
-                                )
-                              }
-                              onClearViewed={() =>
-                                setTabViewed(
-                                  entry.restore.groupId,
-                                  t.id,
-                                  false,
-                                )
-                              }
-                            />
-                          ))}
+                          {day.entries.map((entry) =>
+                            entry.group.tabs.map((t) => (
+                              <TabRow
+                                key={`${entry.id}-${t.id}`}
+                                tab={t}
+                                simpleLayout={simpleLayout}
+                                existingTagOptions={[]}
+                                tagsReadOnly
+                                removeLabel="Apagar permanentemente"
+                                onRequestRemove={() =>
+                                  openConfirmDeleteModal({
+                                    variant: 'trash-entry',
+                                    trashId: entry.id,
+                                  })
+                                }
+                                onSetTags={() => {}}
+                                onRequestEditTitle={() =>
+                                  openEditTabTitleModal({
+                                    groupId: entry.restore.groupId,
+                                    tabId: t.id,
+                                    title: t.title,
+                                  })
+                                }
+                                onOpenTab={() =>
+                                  void handleOpenSavedTab(
+                                    entry.restore.groupId,
+                                    t.id,
+                                    t.url,
+                                    t.viewed === true,
+                                  )
+                                }
+                                onToggleViewed={() =>
+                                  setTabViewed(
+                                    entry.restore.groupId,
+                                    t.id,
+                                    !t.viewed,
+                                  )
+                                }
+                                onRestore={() => restoreFromTrash(entry.id)}
+                              />
+                            )),
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3045,7 +3054,9 @@ function App() {
                                 t.viewed === true,
                               )
                             }
-                            onClearViewed={() => setTabViewed(g.id, t.id, false)}
+                            onToggleViewed={() =>
+                              setTabViewed(g.id, t.id, !t.viewed)
+                            }
                             showFavorite
                             onToggleFavorite={() =>
                               toggleTabFavorite(g.id, t.id)

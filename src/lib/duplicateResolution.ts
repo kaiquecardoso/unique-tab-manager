@@ -76,7 +76,10 @@ export async function askDuplicateChoice(
   tabId: number,
   options: DuplicatePromptOptions,
 ): Promise<DuplicateSaveChoice> {
-  if (options.batchMode) {
+  const multiDuplicateBatch =
+    options.batchMode === true && (options.progress?.total ?? 0) > 1
+
+  if (multiDuplicateBatch) {
     await focusTabForPrompt(tabId)
   }
 
