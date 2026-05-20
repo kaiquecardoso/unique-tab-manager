@@ -2,6 +2,7 @@ import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
 import { markRemotePreferencesApply } from './preferencesLocalEdit'
+import { nextLocalUpdatedAtIso } from './syncMetaTime'
 import {
   DEFAULT_PREFERENCES,
   loadLocalPreferences,
@@ -110,10 +111,10 @@ function queuePreferencesPush(keepalive = false): () => Promise<void> {
     if (!token) return
 
     const preferences = await loadLocalPreferences()
-    const now = new Date().toISOString()
+    const meta = await getSyncMeta()
     await setSyncMeta({
-      localUpdatedAt: now,
-      serverUpdatedAt: (await getSyncMeta())?.serverUpdatedAt ?? null,
+      localUpdatedAt: nextLocalUpdatedAtIso(meta?.serverUpdatedAt),
+      serverUpdatedAt: meta?.serverUpdatedAt ?? null,
     })
     await pushCloudPreferences(preferences, { keepalive })
   }

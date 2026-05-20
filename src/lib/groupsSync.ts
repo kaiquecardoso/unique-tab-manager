@@ -3,6 +3,7 @@ import { getApiUrl, getStoredToken } from './api'
 import { getClientId } from './clientId'
 import { createCloudSyncQueue } from './cloudSyncQueue'
 import { loadGroups, normalizeAllGroups, saveGroups } from './groupsStorage'
+import { nextLocalUpdatedAtIso } from './syncMetaTime'
 
 export const SYNC_META_STORAGE_KEY = 'oneTabGroupsSyncV1'
 
@@ -63,7 +64,13 @@ export async function fetchCloudGroups(): Promise<GroupsCloudPayload> {
   }
 }
 
-export async function pushCloudGroups(
+function groupsSnapshotEqual(a: TabGroup[], b: TabGroup[]): boolean {
+  return (
+    JSON.stringify(normalizeAllGroups(a)) === JSON.stringify(normalizeAllGroups(b))
+  )
+}
+
+async function putCloudGroupsOnce(
   groups: TabGroup[],
   options?: { keepalive?: boolean },
 ): Promise<GroupsCloudPayload> {
@@ -88,17 +95,40 @@ export async function pushCloudGroups(
   }
 
   const data = (await response.json()) as GroupsCloudPayload
-  const now = data.updatedAt
+  const responseGroups = normalizeAllGroups(data.groups)
 
-  await setSyncMeta({
-    localUpdatedAt: now,
-    serverUpdatedAt: now,
-  })
+  if (groupsSnapshotEqual(groups, responseGroups)) {
+    await setSyncMeta({
+      localUpdatedAt: data.updatedAt,
+      serverUpdatedAt: data.updatedAt,
+    })
+  }
 
   return {
-    groups: normalizeAllGroups(data.groups),
-    updatedAt: now,
+    groups: responseGroups,
+    updatedAt: data.updatedAt,
   }
+}
+
+export async function pushCloudGroups(
+  groups: TabGroup[],
+  options?: { keepalive?: boolean },
+): Promise<GroupsCloudPayload> {
+  const normalized = normalizeAllGroups(groups)
+  let result = await putCloudGroupsOnce(normalized, options)
+
+  if (!groupsSnapshotEqual(normalized, result.groups)) {
+    await touchLocalSyncMeta()
+    result = await putCloudGroupsOnce(normalized, options)
+  }
+
+  if (!groupsSnapshotEqual(normalized, result.groups)) {
+    throw new Error(
+      'O servidor devolveu uma versão antiga dos grupos. Use Sincronizar ou tente de novo.',
+    )
+  }
+
+  return result
 }
 
 function queueGroupsPush(groups?: TabGroup[], keepalive = false): () => Promise<void> {
@@ -123,7 +153,14 @@ export async function flushCloudPush(groups?: TabGroup[]): Promise<void> {
 
 /** Agenda PUT com debounce; sempre envia o snapshot mais recente. */
 export function scheduleCloudPush(groups?: TabGroup[]): void {
-  groupsPushQueue.scheduleDebounced(GROUPS_PUSH_DEBOUNCE_MS, queueGroupsPush(groups))
+  groupsPushQueue.scheduleDebounced(GROUPS_PUSH_DEBOUNCE_MS, async () => {
+    try {
+      await queueGroupsPush(groups)()
+    } catch (error) {
+      console.error('[one-tab-manager] Falha ao enviar grupos para a nuvem:', error)
+      throw error
+    }
+  })
 }
 
 /** Dispara PUT pendente antes de fechar/recarregar a página. */
@@ -184,10 +221,9 @@ export async function syncGroupsWithCloud(): Promise<TabGroup[]> {
 }
 
 export async function touchLocalSyncMeta(): Promise<void> {
-  const now = new Date().toISOString()
   const meta = await getSyncMeta()
   await setSyncMeta({
-    localUpdatedAt: now,
+    localUpdatedAt: nextLocalUpdatedAtIso(meta?.serverUpdatedAt),
     serverUpdatedAt: meta?.serverUpdatedAt ?? null,
   })
 }

@@ -64,8 +64,8 @@ import {
   type PublicUser,
 } from './lib/api'
 import {
+  flushCloudPush,
   flushPendingCloudGroupsPush,
-  scheduleCloudPush,
   syncGroupsWithCloud,
   touchLocalSyncMeta,
   type GroupsCloudPayload,
@@ -1219,11 +1219,19 @@ function App() {
       setGroups(sorted)
       void (async () => {
         await saveGroups(sorted)
-        if (authUser) {
-          await touchLocalSyncMeta()
-          scheduleCloudPush(sorted)
+        if (!authUser) return
+
+        await touchLocalSyncMeta()
+        try {
+          await flushCloudPush(sorted)
           setSyncStatus('ok')
           setSyncMessage('Salvo na nuvem')
+        } catch (error) {
+          console.error('[one-tab-manager] Falha ao salvar grupos na nuvem:', error)
+          setSyncStatus('error')
+          setSyncMessage(
+            error instanceof Error ? error.message : 'Falha ao salvar na nuvem',
+          )
         }
       })()
     },
