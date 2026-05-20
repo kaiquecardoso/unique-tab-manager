@@ -3,6 +3,10 @@ import { normalizeTagsArray } from './tags'
 
 export const GROUPS_STORAGE_KEY = 'oneTabGroupsV1'
 
+export function isTabFavorite(tab: SavedTab): boolean {
+  return tab.favorite === true
+}
+
 function normalizeTab(raw: SavedTab, groupSavedAt: string): SavedTab {
   const fallback = groupSavedAt || new Date().toISOString()
   const tags =

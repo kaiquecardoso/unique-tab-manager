@@ -11,6 +11,8 @@ export default defineManifest({
     '<all_urls>',
     'http://localhost:3000/*',
     'ws://localhost:3000/*',
+    'https://one-tab-manager-backend.onrender.com/*',
+    'wss://one-tab-manager-backend.onrender.com/*',
   ],
   icons: {
     16: 'src/assets/logo.png',
@@ -41,17 +43,6 @@ export default defineManifest({
       js: ['src/content.ts'],
       all_frames: true,
       run_at: 'document_start',
-    },
-    {
-      matches: ['https://dashboard.livepix.gg/*'],
-      js: ['src/livepix.ts'],
-      run_at: 'document_idle',
-    },
-  ],
-  web_accessible_resources: [
-    {
-      resources: ['src/assets/logo.png'],
-      matches: ['https://dashboard.livepix.gg/*'],
     },
   ],
 })

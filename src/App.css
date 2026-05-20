@@ -21,7 +21,8 @@
   flex-shrink: 0;
   height: 100%;
   min-height: 0;
-  padding: 28px 0 0;
+  padding: 0;
+  padding-top: env(safe-area-inset-top, 0px);
   border-right: 1px solid var(--border-subtle);
   background: var(--sidebar-bg);
   overflow: hidden;
@@ -30,7 +31,7 @@
 .sidebar-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 0 22px 20px;
+  padding: 28px 22px 20px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -866,35 +867,42 @@ html[data-theme='dark'] .btn-danger:hover:not(:disabled) {
 
 .tab-row-favorite {
   flex-shrink: 0;
-  align-self: flex-start;
-  margin-top: 4px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: none;
   background: transparent;
-  color: var(--text-tertiary);
-  padding: 6px;
+  color: var(--text-item-host);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  display: inline-flex;
-  opacity: 0;
+  opacity: 0.72;
   transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background 0.15s ease;
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
 }
 
-.tab-row:hover .tab-row-favorite,
-.tab-row:has(:focus-visible) .tab-row-favorite,
+.tab-row-favorite:hover,
+.tab-row-favorite:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
 .tab-row-favorite--on {
   opacity: 1;
-}
-
-.tab-row-favorite:hover {
-  color: var(--text-primary);
-  background: var(--surface-hover);
-}
-
-.tab-row-favorite--on {
   color: #eab308;
+}
+
+.tab-row-favorite--on:hover,
+.tab-row-favorite--on:focus-visible {
+  color: #ca8a04;
+  background: color-mix(in srgb, #eab308 12%, transparent);
 }
 
 .tag-filter-bar {
@@ -2256,7 +2264,8 @@ html[data-theme='dark'] .dedupe-preview-open:hover {
     z-index: 50;
     width: min(86vw, 320px);
     max-width: none;
-    padding: 24px 0 0;
+    padding: 0;
+    padding-top: env(safe-area-inset-top, 0px);
     border-right: 1px solid var(--border-subtle);
     border-bottom: none;
     box-shadow: 18px 0 42px rgba(0, 0, 0, 0.12);
@@ -2266,7 +2275,7 @@ html[data-theme='dark'] .dedupe-preview-open:hover {
   }
 
   .sidebar-scroll {
-    padding: 0 20px 20px;
+    padding: 24px 20px 20px;
   }
 
   .sidebar-footer {
@@ -2395,6 +2404,11 @@ html[data-simple-layout='true'] .group-card--simple .group-body {
   width: 26px;
   height: 26px;
   opacity: 0.55;
+}
+
+.tab-row--simple .tab-row-favorite {
+  width: 26px;
+  height: 26px;
 }
 
 .tab-row--simple:hover .tab-row-delete,

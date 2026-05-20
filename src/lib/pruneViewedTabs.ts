@@ -1,5 +1,6 @@
 import { formatUrlLabel } from './deduplicateTabs'
 import { tabUrlKey } from './browserTab'
+import { isTabFavorite } from './groupsStorage'
 import { createTrashedTab } from './trashOps'
 import type { SavedTab, TabGroup } from '../types/tabs'
 import type { TrashedEntry } from '../types/trash'
@@ -30,8 +31,8 @@ export function viewedPruneCutoffMs(
 }
 
 function isPrunableViewedTab(tab: SavedTab, cutoffMs: number): boolean {
+  if (isTabFavorite(tab)) return false
   if (tab.viewed !== true) return false
-  if (tab.favorite === true) return false
   const addedMs = tabAddedAtMs(tab)
   if (addedMs <= 0) return false
   return addedMs < cutoffMs
@@ -82,7 +83,9 @@ export function pruneOldViewedTabs(
   trashEntries: TrashedEntry[]
   removedCount: number
 } {
-  const prunable = collectPrunable(groups, olderThanMonths)
+  const prunable = collectPrunable(groups, olderThanMonths).filter(
+    (entry) => !isTabFavorite(entry.tab),
+  )
   if (prunable.length === 0) {
     return { groups, trashEntries: [], removedCount: 0 }
   }
@@ -106,6 +109,6 @@ export function pruneOldViewedTabs(
   return {
     groups: nextGroups,
     trashEntries,
-    removedCount: removeTabIds.size,
+    removedCount: trashEntries.length,
   }
 }

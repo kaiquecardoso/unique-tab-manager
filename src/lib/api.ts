@@ -17,7 +17,7 @@ export type PublicUser = {
   isAdmin?: boolean
 }
 
-const DEFAULT_API_URL = 'http://localhost:3000'
+const DEFAULT_API_URL = 'https://one-tab-manager-backend.onrender.com'
 
 export function getApiUrl(): string {
   const url = import.meta.env.VITE_API_URL
