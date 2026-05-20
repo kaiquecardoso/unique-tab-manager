@@ -5,6 +5,10 @@ export type DuplicatePromptOptions = {
   existingTitle: string
   existingAddedAt?: string
   newTitle?: string
+  /** Ex.: { current: 2, total: 5 } em importação em lote */
+  progress?: { current: number; total: number }
+  /** Cancelar vira "Pular esta aba" e o fluxo segue para a próxima duplicata */
+  batchMode?: boolean
 }
 
 /**
@@ -26,8 +30,11 @@ export function showDuplicatePrompt(
     labelNewer: 'Mais recente:',
     currentTab: 'Aba atual',
     cancel: 'Cancelar',
-    keepOlder: 'Manter a mais antiga',
-    keepNewer: 'Manter a mais recente',
+    skipThis: 'Pular esta aba',
+    keepOlder: 'Manter a salva',
+    keepNewer: 'Usar a aba atual',
+    batchHint:
+      'As outras duplicatas serão perguntadas em seguida, uma por vez.',
   }
 
   function normalizeTitle(title: string | undefined): string {
@@ -127,13 +134,18 @@ export function showDuplicatePrompt(
       : '0 24px 60px rgba(15, 23, 42, 0.18)'
 
     const heading = document.createElement('div')
-    heading.textContent = copy.heading
+    heading.textContent =
+      options.progress && options.progress.total > 0
+        ? `${copy.heading} (${options.progress.current} de ${options.progress.total})`
+        : copy.heading
     heading.style.fontSize = '15px'
     heading.style.fontWeight = '600'
     heading.style.margin = '0 0 8px 0'
 
     const hint = document.createElement('div')
-    hint.textContent = copy.hint
+    hint.textContent = options.batchMode
+      ? `${copy.hint} ${copy.batchHint}`
+      : copy.hint
     hint.style.fontSize = '13px'
     hint.style.color = isDarkMode ? '#a1a1aa' : '#71717a'
     hint.style.margin = '0 0 14px 0'
@@ -283,7 +295,9 @@ export function showDuplicatePrompt(
       )
     }
 
-    actions.appendChild(makeButton(copy.cancel, 'cancel'))
+    actions.appendChild(
+      makeButton(options.batchMode ? copy.skipThis : copy.cancel, 'cancel'),
+    )
     actions.appendChild(makeButton(copy.keepOlder, 'keep-old'))
     actions.appendChild(makeButton(copy.keepNewer, 'keep-new', true))
     panel.appendChild(actions)

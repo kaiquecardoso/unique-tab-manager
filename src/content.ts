@@ -33,6 +33,8 @@ type DuplicatePromptMessage = {
   existingTitle: string
   existingAddedAt?: string
   newTitle?: string
+  batchMode?: boolean
+  progress?: { current: number; total: number }
 }
 
 let hoveredAnchor: HTMLAnchorElement | null = null
@@ -120,6 +122,8 @@ chrome.runtime.onMessage.addListener(
         existingTitle: message.existingTitle,
         existingAddedAt: message.existingAddedAt,
         newTitle: message.newTitle,
+        batchMode: message.batchMode,
+        progress: message.progress,
       }).then((choice) => sendResponse({ choice }))
       return true
     }

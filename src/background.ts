@@ -2,6 +2,12 @@ import { registerAuthTabListener } from './lib/authTabListener'
 import { tabUrlKey, tabUrlsMatch } from './lib/browserTab'
 import { registerOAuthPopupTracking } from './lib/oauthPopup'
 import { loadGroups } from './lib/groupsStorage'
+import { handleContextMenuClick } from './lib/contextMenuActions'
+import {
+  CONTEXT_MENU,
+  installContextMenus,
+  registerContextMenuRefreshListeners,
+} from './lib/contextMenuSetup'
 import { saveGroupsLocally } from './lib/groupsSync'
 import { isCloudEnabled } from './lib/cloudEnabled'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
@@ -16,23 +22,9 @@ if (isCloudEnabled) {
 }
 registerLivePixUrlMarkListeners()
 import { calendarDayKey } from './lib/calendarDay'
-import {
-  findSavedTabByUrl,
-  removeTabFromGroups,
-  type SavedTabRef,
-} from './lib/savedTabLookup'
-import { createTrashedTab } from './lib/trashOps'
-import { loadTrash, saveTrash, sortTrashEntries } from './lib/trashStorage'
-import {
-  showDuplicatePrompt,
-  type DuplicatePromptOptions,
-  type DuplicateSaveChoice,
-} from './lib/duplicatePrompt'
+import { resolveDuplicateBeforeSave } from './lib/duplicateResolution'
+import { findSavedTabByUrl } from './lib/savedTabLookup'
 import type { SavedTab, TabGroup } from './types/tabs'
-
-function isDuplicateSaveChoice(value: unknown): value is DuplicateSaveChoice {
-  return value === 'keep-new' || value === 'keep-old' || value === 'cancel'
-}
 
 type ContextLinkDraft = {
   url: string
@@ -249,131 +241,29 @@ function addTabToTodayGroup(groups: TabGroup[], newTab: SavedTab): TabGroup[] {
   return [newGroup, ...groups]
 }
 
-async function runDuplicatePromptInTab(
-  tabId: number,
-  options: DuplicatePromptOptions,
-): Promise<DuplicateSaveChoice | undefined> {
-  const targets = [{ tabId }, { tabId, allFrames: true as const }]
-
-  for (const target of targets) {
-    try {
-      const [viaGlobal] = await chrome.scripting.executeScript({
-        target,
-        func: (opts: DuplicatePromptOptions) => {
-          const fn = (
-            globalThis as {
-              __OTM_showDuplicatePrompt?: (
-                o: DuplicatePromptOptions,
-              ) => Promise<DuplicateSaveChoice>
-            }
-          ).__OTM_showDuplicatePrompt
-          return typeof fn === 'function' ? fn(opts) : undefined
-        },
-        args: [options],
-      })
-      if (isDuplicateSaveChoice(viaGlobal?.result)) return viaGlobal.result
-
-      const [direct] = await chrome.scripting.executeScript({
-        target,
-        func: showDuplicatePrompt,
-        args: [options],
-      })
-      if (isDuplicateSaveChoice(direct?.result)) return direct.result
-    } catch {
-      // Tenta outro alvo (ex.: frame principal vs todos os frames).
-    }
-  }
-
-  return undefined
-}
-
-async function askDuplicateChoice(
-  tabId: number,
-  options: DuplicatePromptOptions,
-): Promise<DuplicateSaveChoice> {
-  const injected = await runDuplicatePromptInTab(tabId, options)
-  if (isDuplicateSaveChoice(injected)) return injected
-
-  const payload = {
-    type: 'duplicate-prompt' as const,
-    ...options,
-  }
-
-  for (const delay of [0, 120]) {
-    if (delay > 0) await sleep(delay)
-    try {
-      const response = (await chrome.tabs.sendMessage(tabId, payload)) as
-        | { choice?: DuplicateSaveChoice }
-        | undefined
-      if (isDuplicateSaveChoice(response?.choice)) return response.choice
-    } catch {
-      // Content script pode ainda nao estar pronto.
-    }
-  }
-
-  return 'cancel'
-}
-
-async function trashSavedTabRef(ref: SavedTabRef): Promise<void> {
-  const trash = await loadTrash()
-  const entry = createTrashedTab(ref.group, ref.tab)
-  await saveTrash(sortTrashEntries([entry, ...trash]))
-}
-
-async function resolveDuplicateBeforeSave(
-  url: string,
-  promptTabId: number | undefined,
-  newTitle: string | undefined,
-): Promise<{ proceed: boolean; groups: TabGroup[] }> {
-  const groups = await loadGroups()
-  const duplicate = findSavedTabByUrl(groups, url)
-  if (!duplicate) return { proceed: true, groups }
-
-  const choice =
-    typeof promptTabId === 'number'
-      ? await askDuplicateChoice(promptTabId, {
-          url,
-          existingTitle: duplicate.tab.title,
-          existingAddedAt: duplicate.tab.addedAt,
-          newTitle,
-        })
-      : 'cancel'
-
-  if (choice === 'keep-old') {
-    if (typeof promptTabId === 'number') {
-      await notifyTabWithToast(
-        promptTabId,
-        'Link já salvo — mantida a mais antiga',
-        false,
-        url,
-        false,
-        duplicate.tab.title,
-      )
-    }
-    return { proceed: false, groups }
-  }
-
-  if (choice === 'cancel') {
-    return { proceed: false, groups }
-  }
-
-  await trashSavedTabRef(duplicate)
-  return {
-    proceed: true,
-    groups: removeTabFromGroups(groups, duplicate.tab.id),
-  }
-}
-
 async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
   if (!tab.id || !tab.url || isRestrictedUrl(tab.url)) return
 
   const preliminaryTitle = normalizeTitle(tab.title) || tab.url
-  const { proceed, groups } = await resolveDuplicateBeforeSave(
+  const resolved = await resolveDuplicateBeforeSave(
     tab.url,
     tab.id,
     preliminaryTitle,
   )
-  if (!proceed) return
+  if (!resolved.proceed) {
+    if (resolved.choice === 'keep-old') {
+      await notifyTabWithToast(
+        tab.id,
+        'Link já salvo — mantida a versão salva',
+        false,
+        tab.url,
+        false,
+        preliminaryTitle,
+      )
+    }
+    return
+  }
+  const { groups } = resolved
 
   const tabTitle = await resolveTabTitle(tab)
   const now = new Date().toISOString()
@@ -638,25 +528,12 @@ async function notifyTabWithToast(
   }
 }
 
-async function refreshContextMenus(): Promise<void> {
-  await chrome.contextMenus.removeAll()
-  chrome.contextMenus.create({
-    id: 'open-onetab',
-    title: 'Abrir lista de abas salvas',
-    contexts: ['action'],
-  })
-  chrome.contextMenus.create({
-    id: 'save-link-onetab',
-    title: 'Salvar link no OneTab',
-    contexts: ['link'],
-  })
-}
-
 chrome.runtime.onInstalled.addListener(() => {
-  void refreshContextMenus()
+  void installContextMenus()
 })
 
-void refreshContextMenus()
+void installContextMenus()
+registerContextMenuRefreshListeners()
 
 chrome.action.onClicked.addListener(() => {
   void (async () => {
@@ -666,12 +543,21 @@ chrome.action.onClicked.addListener(() => {
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'open-onetab') {
-    void chrome.runtime.openOptionsPage()
+  const menuId = String(info.menuItemId)
+
+  if (menuId === CONTEXT_MENU.SAVE_THIS && tab) {
+    void saveCurrentTabToStorage(tab)
     return
   }
 
-  if (info.menuItemId === 'save-link-onetab' && info.linkUrl) {
+  if (
+    menuId !== CONTEXT_MENU.SAVE_LINK &&
+    !menuId.startsWith('sep-')
+  ) {
+    void handleContextMenuClick(menuId, tab)
+  }
+
+  if (menuId === CONTEXT_MENU.SAVE_LINK && info.linkUrl) {
     void (async () => {
       try {
         const linkTitle = getContextLinkTitle(tab?.id, info.linkUrl!)
