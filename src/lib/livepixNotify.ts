@@ -2,10 +2,13 @@ import { GROUPS_STORAGE_KEY } from './groupsStorage'
 
 const LIVEPIX_CLICKED_KEY = 'oneTabLivepixClickedUrls'
 
-const LIVEPIX_URL_PATTERN = 'https://dashboard.livepix.gg/*'
+const DONATION_PANEL_URL_PATTERNS = [
+  'https://dashboard.livepix.gg/*',
+  'https://pixgg.com/*',
+]
 
 export async function notifyLivePixRefreshUrlMarks(): Promise<void> {
-  const tabs = await chrome.tabs.query({ url: LIVEPIX_URL_PATTERN })
+  const tabs = await chrome.tabs.query({ url: DONATION_PANEL_URL_PATTERNS })
 
   await Promise.all(
     tabs.map(async (tab) => {

@@ -1,4 +1,8 @@
-import { extractUrlsFromText, linkifyTextElement } from './lib/urlInText'
+import {
+  extractUrlsFromText,
+  linkifyTextElement,
+  primaryUrlFromMessageElement,
+} from './lib/urlInText'
 import {
   KNOWN_LINK_ATTR,
   refreshKnownLinkMarks,
@@ -10,13 +14,85 @@ import {
 } from './lib/livepixClickedLinks'
 import { showPageToast } from './lib/pageToast'
 import { saveLinkFromPage } from './lib/saveLinkFromPage'
+import saveButtonLogoUrl from './assets/logo.png'
 
-const PROCESSED_ATTR = 'data-one-tab-livepix'
+const PROCESSED_ATTR = 'data-one-tab-donation-save'
 const SAVE_BTN_ATTR = 'data-one-tab-save'
-const STYLES_ID = 'one-tab-livepix-styles'
-const LOGO_URL = chrome.runtime.getURL('src/assets/logo.png')
+const SAVE_WRAP_ATTR = 'data-one-tab-save-wrap'
+const STYLES_ID = 'one-tab-donation-panel-styles'
 
-function ensureLivePixButtonStyles(): void {
+type DonationPanelAdapter = {
+  id: string
+  matchesLocation: () => boolean
+  itemSelector: string
+  getMessageParagraph: (item: HTMLElement) => HTMLElement | null
+  getActionBar: (item: HTMLElement) => HTMLElement | null
+  getReferenceControl: (actionBar: HTMLElement) => HTMLElement | null
+  mountSaveControl: (
+    actionBar: HTMLElement,
+    button: HTMLButtonElement,
+    reference: HTMLElement | null,
+  ) => void
+  buttonClassName?: string
+}
+
+const DONATION_PANEL_ADAPTERS: DonationPanelAdapter[] = [
+  {
+    id: 'livepix',
+    matchesLocation: () => window.location.hostname === 'dashboard.livepix.gg',
+    itemSelector: '.transaction-item',
+    getMessageParagraph: (item) => {
+      const columns = item.querySelectorAll(':scope > div')
+      return columns[1]?.querySelector('p') ?? null
+    },
+    getActionBar: (item) => {
+      const playButton = item.querySelector('button[aria-label="play"]')
+      return playButton?.parentElement ?? null
+    },
+    getReferenceControl: (actionBar) =>
+      actionBar.querySelector('button[aria-label="play"]'),
+    mountSaveControl: (actionBar, button, reference) => {
+      actionBar.insertBefore(button, actionBar.firstChild)
+      syncSaveButtonSize(button, reference)
+    },
+    buttonClassName:
+      'MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge css-1di07jz',
+  },
+  {
+    id: 'pixgg',
+    matchesLocation: () => {
+      const host = window.location.hostname
+      return (
+        (host === 'pixgg.com' || host.endsWith('.pixgg.com')) &&
+        window.location.pathname.includes('painel-de-donates')
+      )
+    },
+    itemSelector: '.messagesContent',
+    getMessageParagraph: (item) => item.querySelector('.body-messages p'),
+    getActionBar: (item) => item.querySelector('.controlerWrapper'),
+    getReferenceControl: (actionBar) =>
+      actionBar.querySelector('.controlerButton'),
+    mountSaveControl: (actionBar, button, reference) => {
+      const wrap = document.createElement('div')
+      wrap.className = 'controlerButton'
+      wrap.setAttribute(SAVE_WRAP_ATTR, 'true')
+      wrap.appendChild(button)
+      actionBar.insertBefore(wrap, actionBar.firstChild)
+      syncSaveButtonSize(button, reference)
+    },
+  },
+]
+
+function resolveSaveButtonLogoUrl(): string {
+  if (saveButtonLogoUrl.startsWith('chrome-extension://')) return saveButtonLogoUrl
+  return chrome.runtime.getURL(saveButtonLogoUrl.replace(/^\//, ''))
+}
+
+function getActiveAdapter(): DonationPanelAdapter | undefined {
+  return DONATION_PANEL_ADAPTERS.find((adapter) => adapter.matchesLocation())
+}
+
+function ensureDonationPanelStyles(): void {
   if (document.getElementById(STYLES_ID)) return
 
   const style = document.createElement('style')
@@ -37,6 +113,9 @@ function ensureLivePixButtonStyles(): void {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      border: none;
+      background: transparent;
+      cursor: pointer;
     }
 
     button[${SAVE_BTN_ATTR}]::before {
@@ -50,6 +129,19 @@ function ensureLivePixButtonStyles(): void {
       flex-shrink: 0;
     }
 
+    button[${SAVE_BTN_ATTR}]:disabled {
+      cursor: not-allowed;
+    }
+
+    [${SAVE_WRAP_ATTR}] button[${SAVE_BTN_ATTR}] {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      min-height: 40px;
+      max-width: 40px;
+      max-height: 40px;
+    }
+
     a[data-one-tab-link][${KNOWN_LINK_ATTR}] {
       text-decoration: line-through underline !important;
       opacity: 0.72;
@@ -60,11 +152,11 @@ function ensureLivePixButtonStyles(): void {
 
 function syncSaveButtonSize(
   saveButton: HTMLButtonElement,
-  referenceButton: HTMLButtonElement | null,
+  reference: HTMLElement | null,
 ): void {
-  if (!referenceButton) return
+  if (!reference) return
 
-  const { width, height } = referenceButton.getBoundingClientRect()
+  const { width, height } = reference.getBoundingClientRect()
   const size = Math.round(Math.max(width, height))
   if (size <= 0) return
 
@@ -85,40 +177,23 @@ function scheduleRefreshKnownLinks(root?: ParentNode): void {
   }, 150)
 }
 
-function isLivePixDashboard(): boolean {
-  return window.location.hostname === 'dashboard.livepix.gg'
-}
-
-function getMessageParagraph(item: Element): HTMLElement | null {
-  const columns = item.querySelectorAll(':scope > div')
-  const messageColumn = columns[1]
-  return messageColumn?.querySelector('p') ?? null
-}
-
-function getActionBar(item: Element): HTMLElement | null {
-  const playButton = item.querySelector('button[aria-label="play"]')
-  return playButton?.parentElement ?? null
-}
-
 function createSaveButton(
+  adapter: DonationPanelAdapter,
   url: string | undefined,
   title: string | undefined,
-  referenceButton: HTMLButtonElement | null,
 ): HTMLButtonElement {
-  ensureLivePixButtonStyles()
+  ensureDonationPanelStyles()
 
   const button = document.createElement('button')
   button.type = 'button'
-  button.className =
-    'MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge css-1di07jz'
+  if (adapter.buttonClassName) button.className = adapter.buttonClassName
   button.setAttribute('aria-label', 'Salvar no OneTab')
   button.title = url ? 'Salvar link no OneTab' : 'Nenhum link na mensagem'
   button.setAttribute(SAVE_BTN_ATTR, 'true')
   button.disabled = !url
-  syncSaveButtonSize(button, referenceButton)
 
   const icon = document.createElement('img')
-  icon.src = LOGO_URL
+  icon.src = resolveSaveButtonLogoUrl()
   icon.alt = ''
   icon.width = 22
   icon.height = 22
@@ -140,37 +215,42 @@ function createSaveButton(
   return button
 }
 
-function processTransactionItem(item: HTMLElement): void {
-  if (item.getAttribute(PROCESSED_ATTR) === 'true') return
-  item.setAttribute(PROCESSED_ATTR, 'true')
-
-  const messageParagraph = getMessageParagraph(item)
+function processDonationItem(
+  adapter: DonationPanelAdapter,
+  item: HTMLElement,
+): void {
+  const messageParagraph = adapter.getMessageParagraph(item)
   if (messageParagraph) {
-    linkifyTextElement(messageParagraph)
+    const linkifyOptions = { accent: adapter.id === 'livepix' }
+    linkifyTextElement(messageParagraph, linkifyOptions)
     scheduleRefreshKnownLinks(messageParagraph)
   }
 
-  const messageText = messageParagraph?.textContent ?? ''
-  const urls = extractUrlsFromText(messageText)
-  const primaryUrl = urls[0]
+  if (item.getAttribute(PROCESSED_ATTR) === 'true') return
 
-  const actionBar = getActionBar(item)
+  const messageText = messageParagraph?.textContent ?? ''
+  const primaryUrl =
+    primaryUrlFromMessageElement(messageParagraph) ??
+    extractUrlsFromText(messageText)[0]
+
+  const actionBar = adapter.getActionBar(item)
   if (!actionBar || actionBar.querySelector(`[${SAVE_BTN_ATTR}]`)) return
 
-  const referenceButton = actionBar.querySelector<HTMLButtonElement>(
-    'button[aria-label="play"]',
-  )
+  const reference = adapter.getReferenceControl(actionBar)
   const title =
     messageText.replace(/\s+/g, ' ').trim().slice(0, 120) || undefined
-  const saveButton = createSaveButton(primaryUrl, title, referenceButton)
-  actionBar.insertBefore(saveButton, actionBar.firstChild)
-  syncSaveButtonSize(saveButton, referenceButton)
+  const saveButton = createSaveButton(adapter, primaryUrl, title)
+  adapter.mountSaveControl(actionBar, saveButton, reference)
+  item.setAttribute(PROCESSED_ATTR, 'true')
 }
 
-function scanTransactionItems(root: ParentNode = document): void {
-  root.querySelectorAll('.transaction-item').forEach((node) => {
+function scanDonationItems(
+  adapter: DonationPanelAdapter,
+  root: ParentNode = document,
+): void {
+  root.querySelectorAll(adapter.itemSelector).forEach((node) => {
     if (!(node instanceof HTMLElement)) return
-    processTransactionItem(node)
+    processDonationItem(adapter, node)
   })
   scheduleRefreshKnownLinks(root)
 }
@@ -202,28 +282,36 @@ function registerLinkClickTracking(): void {
   document.addEventListener('mousedown', markClickedLink, true)
 }
 
-function startObserver(): void {
-  ensureLivePixButtonStyles()
+function startObserver(adapter: DonationPanelAdapter): void {
+  ensureDonationPanelStyles()
   registerLinkClickTracking()
 
   void ensureLivepixClickedLinksLoaded().then(() => {
-    scanTransactionItems()
+    scanDonationItems(adapter)
   })
 
   const observer = new MutationObserver((mutations) => {
     let shouldScan = false
 
     for (const mutation of mutations) {
+      if (mutation.type === 'characterData') {
+        shouldScan = true
+        break
+      }
       if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
         shouldScan = true
         break
       }
     }
 
-    if (shouldScan) scanTransactionItems()
+    if (shouldScan) scanDonationItems(adapter)
   })
 
-  observer.observe(document.body, { childList: true, subtree: true })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  })
 }
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -232,10 +320,15 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 })
 
-if (isLivePixDashboard()) {
+const activeAdapter = getActiveAdapter()
+if (activeAdapter) {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startObserver, { once: true })
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => startObserver(activeAdapter),
+      { once: true },
+    )
   } else {
-    startObserver()
+    startObserver(activeAdapter)
   }
 }

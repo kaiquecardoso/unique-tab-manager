@@ -1,3 +1,4 @@
+import './livepix'
 import { showDuplicatePrompt } from './lib/duplicatePrompt'
 import { showPageToast } from './lib/pageToast'
 import { saveLinkFromPage } from './lib/saveLinkFromPage'

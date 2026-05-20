@@ -34,9 +34,81 @@ export function extractFirstUrlFromText(text: string): string | undefined {
   return extractUrlsFromText(text)[0]
 }
 
-export function linkifyTextElement(element: HTMLElement): boolean {
+export type LinkifyOptions = {
+  /** Destaque verde (usado no LivePix). */
+  accent?: boolean
+}
+
+function applyOneTabLinkStyles(
+  anchor: HTMLAnchorElement,
+  options?: LinkifyOptions,
+): void {
+  anchor.target = '_blank'
+  anchor.rel = 'noopener noreferrer'
+  anchor.dataset.oneTabLink = 'true'
+  if (options?.accent) {
+    anchor.style.color = '#40db6a'
+    anchor.style.textDecoration = 'underline'
+    anchor.style.wordBreak = 'break-all'
+  }
+}
+
+/** Marca links já presentes no HTML (ex.: PixGG) para rastreamento. */
+export function markExistingAnchorsInElement(
+  element: HTMLElement,
+  options?: LinkifyOptions,
+): boolean {
+  const anchors = element.querySelectorAll<HTMLAnchorElement>('a[href]')
+  if (anchors.length === 0) return false
+
+  for (const anchor of anchors) {
+    if (anchor.dataset.oneTabLink === 'true') continue
+    try {
+      if (!anchor.href) continue
+      applyOneTabLinkStyles(anchor, options)
+    } catch {
+      // href inválido
+    }
+  }
+
+  element.dataset.oneTabLinkified = 'true'
+  return true
+}
+
+export function primaryUrlFromMessageElement(
+  element: HTMLElement | null,
+): string | undefined {
+  if (!element) return undefined
+
+  const marked = element.querySelector<HTMLAnchorElement>('a[data-one-tab-link][href]')
+  if (marked?.href) {
+    try {
+      return new URL(marked.href).href
+    } catch {
+      // segue para texto
+    }
+  }
+
+  const anyAnchor = element.querySelector<HTMLAnchorElement>('a[href]')
+  if (anyAnchor?.href) {
+    try {
+      return new URL(anyAnchor.href).href
+    } catch {
+      // segue para texto
+    }
+  }
+
+  return extractFirstUrlFromText(element.textContent ?? '')
+}
+
+export function linkifyTextElement(
+  element: HTMLElement,
+  options?: LinkifyOptions,
+): boolean {
   if (element.dataset.oneTabLinkified === 'true') return false
   if (element.querySelector('a[data-one-tab-link]')) return false
+
+  if (markExistingAnchorsInElement(element, options)) return true
 
   const text = element.textContent ?? ''
   if (!text.trim()) return false
@@ -57,12 +129,7 @@ export function linkifyTextElement(element: HTMLElement): boolean {
     const anchor = document.createElement('a')
     anchor.href = normalizeUrl(raw)
     anchor.textContent = raw
-    anchor.target = '_blank'
-    anchor.rel = 'noopener noreferrer'
-    anchor.dataset.oneTabLink = 'true'
-    anchor.style.color = '#40db6a'
-    anchor.style.textDecoration = 'underline'
-    anchor.style.wordBreak = 'break-all'
+    applyOneTabLinkStyles(anchor, options)
 
     fragment.appendChild(anchor)
     lastIndex = index + raw.length

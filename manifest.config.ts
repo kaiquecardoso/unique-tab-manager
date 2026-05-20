@@ -53,4 +53,11 @@ export default defineManifest({
       run_at: 'document_start',
     },
   ],
+  web_accessible_resources: [
+    {
+      matches: ['<all_urls>'],
+      resources: ['src/assets/logo.png'],
+      use_dynamic_url: false,
+    },
+  ],
 })
