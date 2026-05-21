@@ -14,11 +14,7 @@ import { ptBR } from 'date-fns/locale'
 import {
   loadGroups,
   saveGroups,
-  saveGroupsFromLocal,
   GROUPS_STORAGE_KEY,
-  GROUPS_WRITE_SOURCE_KEY,
-  normalizeAllGroups,
-  type GroupsWriteSource,
 } from './lib/groupsStorage'
 import {
   loadTrash,
@@ -61,37 +57,6 @@ import {
 } from './lib/browserTab'
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
-import { AuthModal } from './AuthModal'
-import { isBillingEnabled } from './lib/billing'
-import { isCloudEnabled } from './lib/cloudEnabled'
-import { PlanBadge } from './components/PlanBadge'
-import { RedeemKeyForm } from './components/RedeemKeyForm'
-import {
-  fetchSubscriptionStatus,
-  formatSubscriptionLabel,
-  hasCloudAccess,
-  redeemAccessKey,
-  type SubscriptionStatus,
-} from './lib/subscription'
-import {
-  AUTH_TOKEN_STORAGE_KEY,
-  clearStoredToken,
-  fetchCurrentUser,
-  type PublicUser,
-} from './lib/api'
-import {
-  hasLocalGroupsEditPending,
-  markLocalGroupsEdit,
-  markRemoteGroupsApply,
-} from './lib/groupsLocalEdit'
-import {
-  scheduleCloudPush,
-  flushPendingCloudGroupsPush,
-  syncGroupsWithCloud,
-  touchLocalSyncMeta,
-  type GroupsCloudPayload,
-} from './lib/groupsSync'
-import { flushSyncOutbox } from './lib/syncOutbox'
 import {
   loadLocalPreferences,
   serializeDateRange,
@@ -106,14 +71,7 @@ import {
   markLocalPreferencesEdit,
   markRemotePreferencesApply,
   consumeLocalPreferencesEdit,
-  consumeSkipPreferencesCloudPush,
 } from './lib/preferencesLocalEdit'
-import {
-  flushPendingPreferencesPush,
-  schedulePreferencesPush,
-  syncPreferencesWithCloud,
-  type PreferencesCloudPayload,
-} from './lib/preferencesSync'
 import {
   applyImportAddMissing,
   applyImportReplace,
@@ -518,27 +476,6 @@ function IconPruneViewed() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function IconCloud() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17.5 8.5 4.5 4.5 0 0 1 19 17h-1.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 12v6m0 0-2.5-2.5M12 18l2.5-2.5"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -1049,9 +986,7 @@ function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [simpleLayout, setSimpleLayout] = useState(false)
   const prefsHydratedRef = useRef(false)
-  const cloudSyncInProgressRef = useRef(false)
   const groupsRef = useRef<TabGroup[]>([])
-  const authRefreshInFlightRef = useRef<Promise<void> | null>(null)
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
     appearance: false,
@@ -1091,18 +1026,6 @@ function App() {
   const [redirectModalMounted, setRedirectModalMounted] = useState(false)
   const [redirectModalOpen, setRedirectModalOpen] = useState(false)
   const redirectModalOpenRef = useRef(false)
-  const [authModalMounted, setAuthModalMounted] = useState(false)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
-  const authModalOpenRef = useRef(false)
-  const [authUser, setAuthUser] = useState<PublicUser | null>(null)
-  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(
-    null,
-  )
-  const [authLoading, setAuthLoading] = useState(true)
-  const [licenseKeyInput, setLicenseKeyInput] = useState('')
-  const [licenseKeyBusy, setLicenseKeyBusy] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
-  const [syncMessage, setSyncMessage] = useState('')
   const [redirectAction, setRedirectAction] =
     useState<RedirectToOpenTabAction | null>(null)
 
@@ -1117,10 +1040,6 @@ function App() {
   useEffect(() => {
     redirectModalOpenRef.current = redirectModalOpen
   }, [redirectModalOpen])
-
-  useEffect(() => {
-    authModalOpenRef.current = authModalOpen
-  }, [authModalOpen])
 
   useEffect(() => {
     importModalOpenRef.current = importModalOpen
@@ -1206,29 +1125,16 @@ function App() {
     setGroups(sorted)
   }, [])
 
-  const persist = useCallback(
-    (nextOrUpdater: GroupsPersistInput) => {
-      const sorted = sortGroupsList(
-        typeof nextOrUpdater === 'function'
-          ? nextOrUpdater(groupsRef.current)
-          : nextOrUpdater,
-      )
-      groupsRef.current = sorted
-      setGroups(sorted)
-      void (async () => {
-        if (!isCloudEnabled || !authUser) {
-          await saveGroups(sorted)
-          return
-        }
-
-        await markLocalGroupsEdit()
-        await touchLocalSyncMeta()
-        await saveGroupsFromLocal(sorted)
-        scheduleCloudPush()
-      })()
-    },
-    [authUser],
-  )
+  const persist = useCallback((nextOrUpdater: GroupsPersistInput) => {
+    const sorted = sortGroupsList(
+      typeof nextOrUpdater === 'function'
+        ? nextOrUpdater(groupsRef.current)
+        : nextOrUpdater,
+    )
+    groupsRef.current = sorted
+    setGroups(sorted)
+    void saveGroups(sorted)
+  }, [])
 
   const persistTrash = useCallback((next: TrashedEntry[]) => {
     const sorted = sortTrashEntries(next)
@@ -1241,7 +1147,6 @@ function App() {
       !confirmModalMounted &&
       !editTitleModalMounted &&
       !redirectModalMounted &&
-      !authModalMounted &&
       !importModalMounted &&
       !mobileSidebarOpen
     )
@@ -1255,7 +1160,6 @@ function App() {
     confirmModalMounted,
     editTitleModalMounted,
     redirectModalMounted,
-    authModalMounted,
     importModalMounted,
     mobileSidebarOpen,
   ])
@@ -1287,14 +1191,6 @@ function App() {
     })
     return () => cancelAnimationFrame(id)
   }, [redirectModalMounted])
-
-  useEffect(() => {
-    if (!authModalMounted) return
-    const id = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setAuthModalOpen(true))
-    })
-    return () => cancelAnimationFrame(id)
-  }, [authModalMounted])
 
   useEffect(() => {
     if (!importModalMounted) return
@@ -1340,15 +1236,8 @@ function App() {
   }, [applyPreferences])
 
   useEffect(() => {
-    if (!prefsHydratedRef.current || cloudSyncInProgressRef.current) {
-      return
-    }
-    if (consumeSkipPreferencesCloudPush()) {
-      return
-    }
-    if (!consumeLocalPreferencesEdit()) {
-      return
-    }
+    if (!prefsHydratedRef.current) return
+    if (!consumeLocalPreferencesEdit()) return
 
     const prefs: UserPreferences = {
       theme: darkMode ? 'dark' : 'light',
@@ -1359,113 +1248,7 @@ function App() {
     }
 
     void saveLocalPreferencesFromLocal(prefs)
-    if (isCloudEnabled && authUser) {
-      schedulePreferencesPush(prefs)
-    }
-  }, [
-    authUser,
-    darkMode,
-    simpleLayout,
-    search,
-    activeTagFilters,
-    groupDateRange,
-  ])
-
-  const runCloudSync = useCallback(
-    async (sessionSubscription?: SubscriptionStatus | null) => {
-      if (!isCloudEnabled) return
-
-      const token = await chrome.storage.local.get(AUTH_TOKEN_STORAGE_KEY)
-      if (!token[AUTH_TOKEN_STORAGE_KEY]) return
-
-      if (isBillingEnabled) {
-        const sub =
-          sessionSubscription === undefined
-            ? await fetchSubscriptionStatus()
-            : sessionSubscription
-        if (!hasCloudAccess(sub)) {
-          setSyncStatus('error')
-          setSyncMessage(
-            'Ative o plano Pro com uma chave para sincronizar na nuvem',
-          )
-          return
-        }
-      }
-
-      setSyncStatus('syncing')
-      setSyncMessage('Sincronizando…')
-      cloudSyncInProgressRef.current = true
-      try {
-        await flushSyncOutbox().catch(() => undefined)
-        const [merged, prefs] = await Promise.all([
-          syncGroupsWithCloud(),
-          syncPreferencesWithCloud(),
-        ])
-        const mergedSorted = sortGroupsList(merged)
-        groupsRef.current = mergedSorted
-        setGroups(mergedSorted)
-        applyPreferences(prefs)
-        setSyncStatus('ok')
-        setSyncMessage('Sincronizado em tempo real')
-      } catch (error) {
-        console.error('[one-tab-manager] Falha na sincronização:', error)
-        setSyncStatus('error')
-        setSyncMessage(
-          error instanceof Error ? error.message : 'Falha ao sincronizar',
-        )
-      } finally {
-        cloudSyncInProgressRef.current = false
-      }
-    },
-    [applyPreferences],
-  )
-
-  const refreshAuthSession = useCallback(async () => {
-    if (!isCloudEnabled) return
-
-    if (authRefreshInFlightRef.current) {
-      return authRefreshInFlightRef.current
-    }
-
-    const refreshPromise = (async () => {
-      setAuthLoading(true)
-      try {
-        const user = await fetchCurrentUser()
-        setAuthUser(user)
-        let sub: SubscriptionStatus | null = null
-        if (user && isBillingEnabled) {
-          sub = await fetchSubscriptionStatus()
-          setSubscription(sub)
-        } else {
-          setSubscription(null)
-        }
-        if (user && (!isBillingEnabled || hasCloudAccess(sub))) {
-          await runCloudSync(sub)
-        } else if (user) {
-          setSyncStatus('idle')
-          setSyncMessage('Plano gratuito — use uma chave Pro para nuvem')
-        } else {
-          setSyncStatus('idle')
-          setSyncMessage('')
-        }
-      } catch {
-        setAuthUser(null)
-        setSyncStatus('idle')
-        setSyncMessage('')
-      } finally {
-        setAuthLoading(false)
-      }
-    })()
-
-    authRefreshInFlightRef.current = refreshPromise
-    try {
-      await refreshPromise
-    } finally {
-      if (authRefreshInFlightRef.current === refreshPromise) {
-        authRefreshInFlightRef.current = null
-      }
-    }
-  }, [runCloudSync])
+  }, [darkMode, simpleLayout, search, activeTagFilters, groupDateRange])
 
   useEffect(() => {
     groupsRef.current = groups
@@ -1479,85 +1262,18 @@ function App() {
       setTrash(sortTrashEntries(loadedTrash))
       setReady(true)
     })
-    if (isCloudEnabled) {
-      void refreshAuthSession()
-    }
-  }, [refreshAuthSession])
-
-  useEffect(() => {
-    if (!isCloudEnabled || !authUser) return
-
-    const flushPendingToCloud = () => {
-      flushPendingCloudGroupsPush({ keepalive: true })
-      flushPendingPreferencesPush({ keepalive: true })
-    }
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        flushPendingToCloud()
-      }
-    }
-
-    window.addEventListener('pagehide', flushPendingToCloud)
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => {
-      window.removeEventListener('pagehide', flushPendingToCloud)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [authUser])
+  }, [])
 
   useEffect(() => {
     const onMessage = (message: unknown) => {
       if (!message || typeof message !== 'object' || !('type' in message)) return
-
-      if (message.type === 'auth-success') {
-        requestCloseAuthModal()
-        return
-      }
-
       if (message.type === 'groups:updated') {
         void reloadGroupsFromStorage()
-        return
-      }
-
-      if (message.type === 'realtime:groups' && 'payload' in message) {
-        void (async () => {
-          if (await hasLocalGroupsEditPending()) return
-          const payload = message.payload as GroupsCloudPayload
-          markRemoteGroupsApply()
-          const sorted = sortGroupsList(normalizeAllGroups(payload.groups))
-          groupsRef.current = sorted
-          setGroups(sorted)
-          setSyncStatus('ok')
-          setSyncMessage('Grupos atualizados')
-        })()
-        return
-      }
-
-      if (message.type === 'realtime:preferences' && 'payload' in message) {
-        const payload = message.payload as PreferencesCloudPayload
-        applyPreferences(payload.preferences, true)
-        setSyncStatus('ok')
-        setSyncMessage('Preferências atualizadas')
       }
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
-  }, [refreshAuthSession, applyPreferences, reloadGroupsFromStorage])
-
-  useEffect(() => {
-    if (!isCloudEnabled) return
-
-    const onStorage = (
-      changes: Record<string, chrome.storage.StorageChange>,
-      area: string,
-    ) => {
-      if (area !== 'local' || !changes[AUTH_TOKEN_STORAGE_KEY]) return
-      void refreshAuthSession()
-    }
-    chrome.storage.onChanged.addListener(onStorage)
-    return () => chrome.storage.onChanged.removeListener(onStorage)
-  }, [refreshAuthSession])
+  }, [reloadGroupsFromStorage])
 
   useEffect(() => {
     const onChange = (
@@ -1567,25 +1283,7 @@ function App() {
       if (area !== 'local') return
 
       if (changes[GROUPS_STORAGE_KEY]) {
-        const next = changes[GROUPS_STORAGE_KEY].newValue as TabGroup[] | undefined
-        if (!Array.isArray(next)) return
-
-        const source = changes[GROUPS_WRITE_SOURCE_KEY]?.newValue as
-          | GroupsWriteSource
-          | undefined
-
-        if (source === 'local') {
-          void reloadGroupsFromStorage()
-          return
-        }
-
-        void (async () => {
-          if (await hasLocalGroupsEditPending()) return
-          markRemoteGroupsApply()
-          const sorted = sortGroupsList(normalizeAllGroups(next))
-          groupsRef.current = sorted
-          setGroups(sorted)
-        })()
+        void reloadGroupsFromStorage()
       }
 
       if (changes[TRASH_STORAGE_KEY]) {
@@ -1649,15 +1347,6 @@ function App() {
   }, [redirectModalMounted])
 
   useEffect(() => {
-    if (!authModalMounted) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') requestCloseAuthModal()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [authModalMounted])
-
-  useEffect(() => {
     if (!importModalMounted) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') requestCloseImportModal()
@@ -1688,60 +1377,6 @@ function App() {
   function requestCloseRedirectModal() {
     redirectModalOpenRef.current = false
     setRedirectModalOpen(false)
-  }
-
-  function requestCloseAuthModal() {
-    authModalOpenRef.current = false
-    setAuthModalOpen(false)
-  }
-
-  function handleAuthModalBackdropTransitionEnd(
-    e: React.TransitionEvent<HTMLDivElement>,
-  ) {
-    if (e.propertyName !== 'opacity' || e.target !== e.currentTarget) return
-    if (!authModalOpenRef.current) {
-      setAuthModalMounted(false)
-    }
-  }
-
-  function openAuthModal() {
-    setAuthModalMounted(true)
-  }
-
-  async function handleRedeemLicenseKey() {
-    const code = licenseKeyInput.trim()
-    if (!code) return
-
-    setLicenseKeyBusy(true)
-    setSyncMessage('')
-    try {
-      const { user, subscription: sub } = await redeemAccessKey(code)
-      setAuthUser(user)
-      setSubscription(sub)
-      setLicenseKeyInput('')
-      setSyncStatus('ok')
-      setSyncMessage('Plano Pro ativado')
-      if (hasCloudAccess(sub)) {
-        await runCloudSync(sub)
-      }
-    } catch (error) {
-      setSyncStatus('error')
-      setSyncMessage(error instanceof Error ? error.message : 'Falha ao resgatar chave')
-    } finally {
-      setLicenseKeyBusy(false)
-    }
-  }
-
-  async function handleLogout() {
-    await clearStoredToken()
-    await chrome.storage.local.remove([
-      'oneTabGroupsSyncV1',
-      'oneTabPreferencesSyncV1',
-    ])
-    setAuthUser(null)
-    setSubscription(null)
-    setSyncStatus('idle')
-    setSyncMessage('')
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -2171,8 +1806,7 @@ function App() {
     if (removedCount > 0) {
       persistTrash([...trashEntries, ...trash])
       persist(next)
-      setSyncStatus('ok')
-      setSyncMessage(
+      setGroupsImportStatus(
         `${removedCount} duplicada${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira (mantida a mais ${keep === 'newest' ? 'recente' : 'antiga'}).`,
       )
     }
@@ -2184,8 +1818,7 @@ function App() {
     if (removedCount > 0) {
       persistTrash([...trashEntries, ...trash])
       persist(next)
-      setSyncStatus('ok')
-      setSyncMessage(
+      setGroupsImportStatus(
         `${removedCount} aba${removedCount === 1 ? '' : 's'} vista${removedCount === 1 ? '' : 's'} antiga${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira.`,
       )
     }
@@ -2581,121 +2214,17 @@ function App() {
           </SidebarDropdownSection>
         </section>
 
-        <div className="sidebar-actions">
-          {isCloudEnabled &&
-          authUser &&
-          !authLoading &&
-          (!isBillingEnabled || hasCloudAccess(subscription)) ? (
-            <button
-              type="button"
-              className="btn btn-primary sidebar-footer-btn"
-              disabled={syncStatus === 'syncing'}
-              onClick={() => void runCloudSync()}
-            >
-              {syncStatus === 'syncing' ? 'Sincronizando…' : 'Sincronizar'}
-            </button>
-          ) : null}
-        </div>
-
         <p className="sidebar-hint">
           Clique no ícone da extensão para salvar a aba atual. Botão direito no
           ícone → <strong>Abrir lista de abas salvas</strong>.
         </p>
         </div>
 
-        {isCloudEnabled ? (
-        <footer className="sidebar-footer" aria-label="Conta e sincronização">
-          <div className="sidebar-footer-card">
-            <div className="sidebar-footer-head">
-              {authUser?.photo ? (
-                <img
-                  className="sidebar-footer-avatar"
-                  src={authUser.photo}
-                  alt=""
-                  width={36}
-                  height={36}
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="sidebar-footer-icon" aria-hidden>
-                  <IconCloud />
-                </span>
-              )}
-              <div className="sidebar-footer-copy">
-                <div className="sidebar-footer-title-row">
-                  <p className="sidebar-footer-title">
-                    {authUser ? authUser.name : 'Sincronizar na nuvem'}
-                  </p>
-                  {authUser && isBillingEnabled && subscription ? (
-                    <PlanBadge subscription={subscription} />
-                  ) : null}
-                </div>
-                {authUser ? (
-                  <>
-                    <p className="sidebar-footer-subtitle">{authUser.email}</p>
-                    {isBillingEnabled &&
-                    subscription &&
-                    hasCloudAccess(subscription) ? (
-                      <p className="sidebar-footer-plan-detail">
-                        {formatSubscriptionLabel(subscription)}
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-                {syncMessage ? (
-                  <p
-                    className={`sidebar-footer-sync${syncStatus === 'error' ? ' sidebar-footer-sync--error' : ''}`}
-                    role="status"
-                  >
-                    {syncMessage}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            {isBillingEnabled &&
-            authUser &&
-            !hasCloudAccess(subscription) ? (
-              <RedeemKeyForm
-                value={licenseKeyInput}
-                busy={licenseKeyBusy}
-                onChange={setLicenseKeyInput}
-                onSubmit={() => void handleRedeemLicenseKey()}
-              />
-            ) : null}
-            {authLoading ? (
-              <button
-                type="button"
-                className="btn btn-primary sidebar-footer-btn"
-                disabled
-              >
-                Carregando…
-              </button>
-            ) : authUser ? (
-              <button
-                type="button"
-                className="btn btn-outline sidebar-footer-btn"
-                onClick={() => void handleLogout()}
-              >
-                Sair
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary sidebar-footer-btn"
-                onClick={() => openAuthModal()}
-              >
-                Entrar
-              </button>
-            )}
-          </div>
+        <footer className="sidebar-footer" aria-label="Armazenamento local">
+          <p className="sidebar-hint">
+            Dados salvos apenas neste navegador.
+          </p>
         </footer>
-        ) : (
-          <footer className="sidebar-footer" aria-label="Armazenamento local">
-            <p className="sidebar-hint">
-              Modo offline — dados salvos apenas neste navegador.
-            </p>
-          </footer>
-        )}
       </aside>
 
       <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
@@ -3455,15 +2984,6 @@ function App() {
           )
         : null}
 
-      {isCloudEnabled ? (
-        <AuthModal
-          mounted={authModalMounted}
-          open={authModalOpen}
-          onRequestClose={requestCloseAuthModal}
-          onBackdropTransitionEnd={handleAuthModalBackdropTransitionEnd}
-          onLoginStarted={requestCloseAuthModal}
-        />
-      ) : null}
     </Fragment>
   )
 }

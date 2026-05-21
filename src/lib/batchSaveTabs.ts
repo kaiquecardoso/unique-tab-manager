@@ -1,7 +1,7 @@
 import { calendarDayKey } from './calendarDay'
 import { resolveDuplicateBeforeSave } from './duplicateResolution'
 import { isUrlExcluded } from './excludedSites'
-import { saveGroupsLocally } from './groupsSync'
+import { saveGroupsLocally } from './groupsNotify'
 import { loadGroups } from './groupsStorage'
 import { findSavedTabByUrl } from './savedTabLookup'
 import type { SavedTab, TabGroup } from '../types/tabs'

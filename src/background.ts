@@ -1,6 +1,4 @@
-import { registerAuthTabListener } from './lib/authTabListener'
 import { tabUrlKey, tabUrlsMatch } from './lib/browserTab'
-import { registerOAuthPopupTracking } from './lib/oauthPopup'
 import { loadGroups } from './lib/groupsStorage'
 import { handleContextMenuClick } from './lib/contextMenuActions'
 import {
@@ -8,18 +6,9 @@ import {
   installContextMenus,
   registerContextMenuRefreshListeners,
 } from './lib/contextMenuSetup'
-import { saveGroupsLocally } from './lib/groupsSync'
-import { isCloudEnabled } from './lib/cloudEnabled'
+import { saveGroupsLocally } from './lib/groupsNotify'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
-import { registerRealtimeListeners } from './lib/realtime'
-import { registerSyncOutboxListeners } from './lib/syncOutbox'
 
-registerAuthTabListener()
-registerOAuthPopupTracking()
-if (isCloudEnabled) {
-  registerRealtimeListeners()
-  registerSyncOutboxListeners()
-}
 registerLivePixUrlMarkListeners()
 import { calendarDayKey } from './lib/calendarDay'
 import { resolveDuplicateBeforeSave } from './lib/duplicateResolution'

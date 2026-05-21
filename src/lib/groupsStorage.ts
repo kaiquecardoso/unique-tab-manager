@@ -62,14 +62,7 @@ export async function saveGroupsFromLocal(groups: TabGroup[]): Promise<void> {
   })
 }
 
-export async function saveGroupsFromRemote(groups: TabGroup[]): Promise<void> {
-  await chrome.storage.local.set({
-    [GROUPS_WRITE_SOURCE_KEY]: 'remote' satisfies GroupsWriteSource,
-    [GROUPS_STORAGE_KEY]: groups,
-  })
-}
-
-/** @deprecated Prefira saveGroupsFromLocal ou saveGroupsFromRemote. */
+/** @deprecated Prefira saveGroupsFromLocal. */
 export async function saveGroups(groups: TabGroup[]): Promise<void> {
   await saveGroupsFromLocal(groups)
 }
