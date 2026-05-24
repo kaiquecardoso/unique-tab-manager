@@ -4,6 +4,16 @@ Extensão para **Google Chrome** (Manifest V3) inspirada no conceito do OneTab: 
 
 Os dados ficam **apenas no seu navegador** (`chrome.storage.local`). Não há conta, servidor nem sincronização em nuvem.
 
+## Interface
+
+| Tema claro — layout padrão | Tema claro — modo compacto |
+| :---: | :---: |
+| ![One Tab Manager — tema claro](src/assets/claro.png) | ![One Tab Manager — tema claro, modo compacto](src/assets/compactoclaro.png) |
+
+| Tema escuro — layout padrão | Tema escuro — modo compacto |
+| :---: | :---: |
+| ![One Tab Manager — tema escuro](src/assets/escuro.png) | ![One Tab Manager — tema escuro, modo compacto](src/assets/compactoescuro.png) |
+
 ## Funcionalidades
 
 ### Salvar abas
