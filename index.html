@@ -1,24 +1,88 @@
 <!doctype html>
-<html lang="pt-BR">
+<html
+  lang="pt-BR"
+  data-theme="dark"
+  data-theme-boot
+  style="background: #111111; color-scheme: dark"
+>
   <head>
     <script>
-      try {
-        var t = localStorage.getItem('one-tab-manager-theme')
-        document.documentElement.setAttribute(
-          'data-theme',
-          t === 'dark' ? 'dark' : 'light',
-        )
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light')
-      }
+      ;(function () {
+        var BOOT = 'data-theme-boot'
+        var KEY = 'one-tab-manager-theme'
+        var PREFS = 'oneTabPreferencesV1'
+        var BG = { light: '#f5f5f7', dark: '#111111' }
+
+        function applyTheme(theme) {
+          var bg = BG[theme] || BG.dark
+          var html = document.documentElement
+          html.setAttribute(BOOT, '')
+          html.setAttribute('data-theme', theme)
+          html.style.colorScheme = theme
+          html.style.background = bg
+        }
+
+        function readSyncTheme() {
+          try {
+            var s = sessionStorage.getItem(KEY)
+            if (s === 'dark' || s === 'light') return s
+            var l = localStorage.getItem(KEY)
+            if (l === 'dark' || l === 'light') return l
+          } catch (e) {}
+          return null
+        }
+
+        var cached = readSyncTheme()
+        if (cached) {
+          applyTheme(cached)
+        } else {
+          document.documentElement.setAttribute(BOOT, '')
+          document.documentElement.setAttribute('data-theme', 'dark')
+        }
+
+        if (
+          typeof chrome !== 'undefined' &&
+          chrome.storage &&
+          chrome.storage.local
+        ) {
+          chrome.storage.local.get(PREFS, function (data) {
+            var p = data && data[PREFS]
+            if (!p || typeof p !== 'object') return
+            var theme = p.theme === 'dark' ? 'dark' : 'light'
+            applyTheme(theme)
+            try {
+              localStorage.setItem(KEY, theme)
+              sessionStorage.setItem(KEY, theme)
+            } catch (e) {}
+          })
+        }
+
+        function paintBody() {
+          var theme = document.documentElement.getAttribute('data-theme')
+          var bg = BG[theme] || BG.dark
+          if (document.body) {
+            document.body.style.margin = '0'
+            document.body.style.background = bg
+          }
+          var root = document.getElementById('root')
+          if (root) root.style.background = bg
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', paintBody)
+        } else {
+          paintBody()
+        }
+      })()
     </script>
+    <link rel="stylesheet" href="/theme-boot.css" />
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/src/assets/logo_tab.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OneTab — Gerenciador de abas</title>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin: 0; background: #111111">
+    <div id="root" style="min-height: 100svh; background: #111111"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

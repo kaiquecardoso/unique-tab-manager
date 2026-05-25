@@ -5,7 +5,13 @@ export const PREFERENCES_WRITE_SOURCE_KEY = 'oneTabPreferencesWriteSourceV1'
 
 export type PreferencesWriteSource = 'local' | 'remote'
 export const THEME_STORAGE_KEY = 'one-tab-manager-theme'
+export const THEME_BOOT_ATTR = 'data-theme-boot'
 export const SIMPLE_LAYOUT_STORAGE_KEY = 'one-tab-manager-simple-layout'
+
+const THEME_MAIN_BG: Record<'light' | 'dark', string> = {
+  light: '#f5f5f7',
+  dark: '#111111',
+}
 
 export type DateRangePreference = {
   from?: string
@@ -25,6 +31,39 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   simpleLayout: false,
   search: '',
   activeTagFilters: [],
+}
+
+/** Lê o tema já aplicado no HTML (script inline) ou espelhado no localStorage. */
+export function readInitialThemeFromDocument(): 'light' | 'dark' {
+  const attr = document.documentElement.getAttribute('data-theme')
+  if (attr === 'dark') return 'dark'
+  if (attr === 'light') return 'light'
+  try {
+    const session = sessionStorage.getItem(THEME_STORAGE_KEY)
+    if (session === 'dark' || session === 'light') return session
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+export function applyThemeToDocument(theme: 'light' | 'dark'): void {
+  const html = document.documentElement
+  html.setAttribute('data-theme', theme)
+  html.style.colorScheme = theme
+  if (!html.hasAttribute(THEME_BOOT_ATTR)) return
+  const bg = THEME_MAIN_BG[theme]
+  html.style.background = bg
+  if (document.body) document.body.style.background = bg
+}
+
+/** Habilita transições de tema após o primeiro paint com cores corretas. */
+export function finishThemeBoot(): void {
+  const html = document.documentElement
+  html.removeAttribute(THEME_BOOT_ATTR)
+  html.style.background = ''
+  html.style.colorScheme = ''
+  if (document.body) document.body.style.background = ''
 }
 
 export function serializeDateRange(
@@ -72,10 +111,14 @@ export async function loadLocalPreferences(): Promise<UserPreferences> {
   await migrateLegacyPreferences()
   const record = await chrome.storage.local.get(PREFERENCES_STORAGE_KEY)
   const raw = record[PREFERENCES_STORAGE_KEY]
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_PREFERENCES }
+  if (!raw || typeof raw !== 'object') {
+    const defaults = { ...DEFAULT_PREFERENCES }
+    await mirrorPreferencesToLocalStorage(defaults)
+    return defaults
+  }
 
   const p = raw as UserPreferences
-  return {
+  const prefs: UserPreferences = {
     theme: p.theme === 'dark' ? 'dark' : 'light',
     simpleLayout: p.simpleLayout === true,
     search: typeof p.search === 'string' ? p.search : '',
@@ -94,6 +137,8 @@ export async function loadLocalPreferences(): Promise<UserPreferences> {
           }
         : undefined,
   }
+  await mirrorPreferencesToLocalStorage(prefs)
+  return prefs
 }
 
 export async function saveLocalPreferencesFromLocal(
@@ -119,6 +164,7 @@ export async function saveLocalPreferencesFromRemote(
 async function mirrorPreferencesToLocalStorage(prefs: UserPreferences): Promise<void> {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, prefs.theme)
+    sessionStorage.setItem(THEME_STORAGE_KEY, prefs.theme)
     localStorage.setItem(
       SIMPLE_LAYOUT_STORAGE_KEY,
       prefs.simpleLayout ? 'true' : 'false',

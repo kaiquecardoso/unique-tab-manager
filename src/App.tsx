@@ -58,7 +58,9 @@ import {
 import { mergeNewTags } from './lib/tags'
 import { toggleThemeWithViewTransition } from './lib/themeViewTransition'
 import {
+  applyThemeToDocument,
   loadLocalPreferences,
+  readInitialThemeFromDocument,
   serializeDateRange,
   parseDateRange,
   PREFERENCES_STORAGE_KEY,
@@ -972,19 +974,28 @@ function MainViewTabIcon({ view }: { view: MainView }) {
   return <IconTrash />
 }
 
-function App() {
+type AppProps = {
+  initialPrefs?: UserPreferences
+}
+
+function App({ initialPrefs }: AppProps = {}) {
   const [groups, setGroups] = useState<TabGroup[]>([])
   const [trash, setTrash] = useState<TrashedEntry[]>([])
   const [mainView, setMainView] = useState<MainView>('saved')
-  const [ready, setReady] = useState(false)
   const [search, setSearch] = useState('')
   const [activeTagFilters, setActiveTagFilters] = useState<string[]>([])
   const [groupDateRange, setGroupDateRange] = useState<
     DateRange | undefined
   >()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
-  const [simpleLayout, setSimpleLayout] = useState(false)
+  const [darkMode, setDarkMode] = useState(
+    () =>
+      initialPrefs?.theme === 'dark' ||
+      readInitialThemeFromDocument() === 'dark',
+  )
+  const [simpleLayout, setSimpleLayout] = useState(
+    () => initialPrefs?.simpleLayout === true,
+  )
   const prefsHydratedRef = useRef(false)
   const groupsRef = useRef<TabGroup[]>([])
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
@@ -1215,10 +1226,7 @@ function App() {
   )
 
   useEffect(() => {
-    document.documentElement.setAttribute(
-      'data-theme',
-      darkMode ? 'dark' : 'light',
-    )
+    applyThemeToDocument(darkMode ? 'dark' : 'light')
   }, [darkMode])
 
   useEffect(() => {
@@ -1229,11 +1237,15 @@ function App() {
   }, [simpleLayout])
 
   useEffect(() => {
+    if (initialPrefs) {
+      prefsHydratedRef.current = true
+      return
+    }
     void loadLocalPreferences().then((prefs) => {
       applyPreferences(prefs)
       prefsHydratedRef.current = true
     })
-  }, [applyPreferences])
+  }, [applyPreferences, initialPrefs])
 
   useEffect(() => {
     if (!prefsHydratedRef.current) return
@@ -1260,7 +1272,6 @@ function App() {
       groupsRef.current = sorted
       setGroups(sorted)
       setTrash(sortTrashEntries(loadedTrash))
-      setReady(true)
     })
   }, [])
 
@@ -1908,14 +1919,6 @@ function App() {
           ? { ...gr, customTitle: trimmed || undefined }
           : gr,
       ),
-    )
-  }
-
-  if (!ready) {
-    return (
-      <div className="shell shell--loading">
-        <p className="loading-text">Carregando…</p>
-      </div>
     )
   }
 

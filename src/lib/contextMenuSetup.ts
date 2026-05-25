@@ -16,84 +16,130 @@ export const CONTEXT_MENU = {
   SAVE_LINK: 'save-link-onetab',
 } as const
 
-export async function installContextMenus(): Promise<void> {
-  await chrome.contextMenus.removeAll()
+function contextMenuCallback<T>(run: (done: () => void) => T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    try {
+      run(() => {
+        const message = chrome.runtime.lastError?.message
+        if (message) reject(new Error(message))
+        else resolve(undefined as T)
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
 
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.OPEN_LIST,
-    title: 'Abrir One Tab Manager',
-    contexts: ['action', 'page'],
+function createContextMenu(
+  options: chrome.contextMenus.CreateProperties,
+): Promise<void> {
+  return contextMenuCallback((done) => {
+    chrome.contextMenus.create(options, done)
   })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SEP_1,
-    type: 'separator',
-    contexts: ['action', 'page'],
+}
+
+function updateContextMenu(
+  id: string,
+  options: { enabled?: boolean; title?: string },
+): Promise<void> {
+  return contextMenuCallback((done) => {
+    chrome.contextMenus.update(id, options, done)
   })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_WINDOW,
-    title: 'Enviar todas as guias desta janela',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_TAB_GROUP,
-    title: 'Enviar todas as guias deste grupo de guias',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_SELECTED,
-    title: 'Enviar as guias selecionadas',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SEP_2,
-    type: 'separator',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_THIS,
-    title: 'Enviar somente esta guia',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_EXCEPT_THIS,
-    title: 'Enviar todas as guias, exceto esta',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_LEFT,
-    title: 'Enviar as guias à esquerda',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_RIGHT,
-    title: 'Enviar as guias à direita',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_ALL_WINDOWS,
-    title: 'Enviar todas as guias de todas as janelas',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: 'sep-3',
-    type: 'separator',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.TOGGLE_EXCLUDE,
-    title: 'Excluir este site do One Tab Manager',
-    contexts: ['action', 'page'],
-  })
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU.SAVE_LINK,
-    title: 'Salvar link no One Tab Manager',
-    contexts: ['link'],
-  })
+}
+
+let installPromise: Promise<void> | null = null
+
+async function buildContextMenus(): Promise<void> {
+  await contextMenuCallback((done) => chrome.contextMenus.removeAll(done))
+
+  await Promise.all([
+    createContextMenu({
+      id: CONTEXT_MENU.OPEN_LIST,
+      title: 'Abrir One Tab Manager',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SEP_1,
+      type: 'separator',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_WINDOW,
+      title: 'Enviar todas as guias desta janela',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_TAB_GROUP,
+      title: 'Enviar todas as guias deste grupo de guias',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_SELECTED,
+      title: 'Enviar as guias selecionadas',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SEP_2,
+      type: 'separator',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_THIS,
+      title: 'Enviar somente esta guia',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_EXCEPT_THIS,
+      title: 'Enviar todas as guias, exceto esta',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_LEFT,
+      title: 'Enviar as guias à esquerda',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_RIGHT,
+      title: 'Enviar as guias à direita',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_ALL_WINDOWS,
+      title: 'Enviar todas as guias de todas as janelas',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: 'sep-3',
+      type: 'separator',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.TOGGLE_EXCLUDE,
+      title: 'Excluir este site do One Tab Manager',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
+      id: CONTEXT_MENU.SAVE_LINK,
+      title: 'Salvar link no One Tab Manager',
+      contexts: ['link'],
+    }),
+  ])
+}
+
+export function installContextMenus(): Promise<void> {
+  if (!installPromise) {
+    installPromise = buildContextMenus().finally(() => {
+      installPromise = null
+    })
+  }
+  return installPromise
 }
 
 export async function updateContextMenuAvailability(
   tab?: chrome.tabs.Tab,
 ): Promise<void> {
+  await installContextMenus()
+
   const windowId = tab?.windowId
   const tabId = tab?.id
   const hasTab = typeof windowId === 'number' && typeof tabId === 'number'
@@ -114,28 +160,28 @@ export async function updateContextMenuAvailability(
   }
 
   const updates: Promise<void>[] = [
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_TAB_GROUP, {
+    updateContextMenu(CONTEXT_MENU.SAVE_TAB_GROUP, {
       enabled: hasTab && hasTabGroup,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_SELECTED, {
+    updateContextMenu(CONTEXT_MENU.SAVE_SELECTED, {
       enabled: hasTab && highlightedCount >= 2,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_LEFT, {
+    updateContextMenu(CONTEXT_MENU.SAVE_LEFT, {
       enabled: hasTab && hasLeft,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_RIGHT, {
+    updateContextMenu(CONTEXT_MENU.SAVE_RIGHT, {
       enabled: hasTab && hasRight,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_THIS, {
+    updateContextMenu(CONTEXT_MENU.SAVE_THIS, {
       enabled: hasTab,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_EXCEPT_THIS, {
+    updateContextMenu(CONTEXT_MENU.SAVE_EXCEPT_THIS, {
       enabled: hasTab && windowTabs.length > 1,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_WINDOW, {
+    updateContextMenu(CONTEXT_MENU.SAVE_WINDOW, {
       enabled: hasTab && windowTabs.length > 0,
     }),
-    chrome.contextMenus.update(CONTEXT_MENU.SAVE_ALL_WINDOWS, {
+    updateContextMenu(CONTEXT_MENU.SAVE_ALL_WINDOWS, {
       enabled: true,
     }),
   ]
@@ -144,7 +190,7 @@ export async function updateContextMenuAvailability(
   if (host) {
     const excluded = await isHostnameExcluded(host)
     updates.push(
-      chrome.contextMenus.update(CONTEXT_MENU.TOGGLE_EXCLUDE, {
+      updateContextMenu(CONTEXT_MENU.TOGGLE_EXCLUDE, {
         title: excluded
           ? 'Permitir este site no One Tab Manager'
           : 'Excluir este site do One Tab Manager',
@@ -153,7 +199,7 @@ export async function updateContextMenuAvailability(
     )
   } else {
     updates.push(
-      chrome.contextMenus.update(CONTEXT_MENU.TOGGLE_EXCLUDE, {
+      updateContextMenu(CONTEXT_MENU.TOGGLE_EXCLUDE, {
         enabled: false,
       }),
     )

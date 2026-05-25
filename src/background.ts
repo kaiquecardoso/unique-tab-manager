@@ -521,8 +521,10 @@ chrome.runtime.onInstalled.addListener(() => {
   void installContextMenus()
 })
 
-void installContextMenus()
-registerContextMenuRefreshListeners()
+void (async () => {
+  await installContextMenus()
+  registerContextMenuRefreshListeners()
+})()
 
 chrome.action.onClicked.addListener(() => {
   void (async () => {
