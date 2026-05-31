@@ -15,6 +15,7 @@ import {
   loadGroups,
   saveGroups,
   GROUPS_STORAGE_KEY,
+  isTabFavorite,
 } from './lib/groupsStorage'
 import {
   loadTrash,
@@ -30,16 +31,29 @@ import {
   type DuplicateRemovalEntry,
 } from './lib/deduplicateTabs'
 import {
-  countPrunableViewedTabs,
-  DEFAULT_VIEWED_PRUNE_MONTHS,
-  listPrunableViewedTabs,
-  pruneOldViewedTabs,
-  type PrunableViewedEntry,
-} from './lib/pruneViewedTabs'
+  countViewedTabs,
+  moveViewedTabsToTrash,
+} from './lib/moveViewedTabs'
+import {
+  countGroupFavoriteTabs,
+  countGroupViewedNonFavoriteTabs,
+  splitGroupTabsForTrash,
+  type GroupTrashScope,
+} from './lib/moveGroupTabs'
+import {
+  applyPruneEntriesToTrash,
+  applyPruneTabEntryToTrash,
+  countTabsBeforeDate,
+  createPrunableTabEntry,
+  listTabsBeforeDate,
+  splitTabsBeforeDate,
+  type PrunableTabEntry,
+} from './lib/pruneTabsByDate'
 import {
   createTrashedGroup,
   createTrashedTab,
-  restoreTrashedEntry,
+  restoreSingleTabFromTrashedEntry,
+  restoreTrashedEntries,
 } from './lib/trashOps'
 import { groupSavedInDateRange } from './lib/groupDateRangeFilter'
 import {
@@ -78,10 +92,14 @@ import {
   applyImportAddMissing,
   applyImportReplace,
   buildImportPreview,
+  filterImportedGroupsByUrls,
+  findImportTrashOverlap,
   parseGroupsFromExportPayload,
+  removeTabsFromTrashByUrlKeys,
   type ImportPreview,
 } from './lib/importGroups'
 import { createSidebarCalendarDayButton } from './SidebarCalendarDayButton'
+import { ModalDatePicker } from './ModalDatePicker'
 import 'react-day-picker/style.css'
 import type { SavedTab, TabGroup } from './types/tabs'
 import type { TrashedEntry } from './types/trash'
@@ -473,15 +491,31 @@ function IconDedupe() {
   )
 }
 
-function IconPruneViewed() {
+function formatCalendarDate(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d)
+}
+
+function IconCalendarPeriod() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="18"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
       <path
-        d="M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+        d="M16 2v4M8 2v4M3 10h18"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   )
@@ -916,13 +950,11 @@ type ConfirmDeleteAction =
   | { variant: 'trash-entry'; trashId: string }
   | { variant: 'trash-all' }
   | { variant: 'remove-duplicates' }
-  | { variant: 'prune-viewed' }
+  | { variant: 'prune-by-date' }
 
-type EditTabTitleAction = {
-  groupId: string
-  tabId: string
-  title: string
-}
+type EditTitleAction =
+  | { variant: 'tab'; groupId: string; tabId: string; title: string }
+  | { variant: 'group'; groupId: string; title: string }
 
 type RedirectToOpenTabAction = {
   chromeTabId: number
@@ -933,6 +965,11 @@ type RedirectToOpenTabAction = {
 type PendingGroupsImport = {
   groups: TabGroup[]
   preview: ImportPreview
+}
+
+type PendingImportTrashResolution = PendingGroupsImport & {
+  mode: 'replace' | 'add-missing'
+  overlapCount: number
 }
 
 const GROUPS_EXPORT_VERSION = 1
@@ -998,6 +1035,7 @@ function App({ initialPrefs }: AppProps = {}) {
   )
   const prefsHydratedRef = useRef(false)
   const groupsRef = useRef<TabGroup[]>([])
+  const trashRef = useRef<TrashedEntry[]>([])
   const [preferenceSectionsOpen, setPreferenceSectionsOpen] = useState({
     backup: false,
     appearance: false,
@@ -1018,6 +1056,9 @@ function App({ initialPrefs }: AppProps = {}) {
     useState<ConfirmDeleteAction | null>(null)
   const [dedupeKeepStrategy, setDedupeKeepStrategy] =
     useState<DedupeKeepStrategy>('newest')
+  const [pruneBeforeDate, setPruneBeforeDate] = useState<Date | undefined>(
+    undefined,
+  )
   const [editTitleModalMounted, setEditTitleModalMounted] = useState(false)
   const [editTitleModalOpen, setEditTitleModalOpen] = useState(false)
   const editTitleModalOpenRef = useRef(false)
@@ -1025,7 +1066,7 @@ function App({ initialPrefs }: AppProps = {}) {
   const importGroupsInputRef = useRef<HTMLInputElement>(null)
   const themeSwitchRef = useRef<HTMLButtonElement>(null)
   const [editTitleAction, setEditTitleAction] =
-    useState<EditTabTitleAction | null>(null)
+    useState<EditTitleAction | null>(null)
   const [editTitleDraft, setEditTitleDraft] = useState('')
   const [groupsImportStatus, setGroupsImportStatus] = useState('')
   const [importModalMounted, setImportModalMounted] = useState(false)
@@ -1034,11 +1075,31 @@ function App({ initialPrefs }: AppProps = {}) {
   const [pendingImport, setPendingImport] = useState<PendingGroupsImport | null>(
     null,
   )
+  const pendingImportTrashAfterCloseRef = useRef(false)
+  const [importTrashModalMounted, setImportTrashModalMounted] = useState(false)
+  const [importTrashModalOpen, setImportTrashModalOpen] = useState(false)
+  const importTrashModalOpenRef = useRef(false)
+  const [pendingImportTrash, setPendingImportTrash] =
+    useState<PendingImportTrashResolution | null>(null)
   const [redirectModalMounted, setRedirectModalMounted] = useState(false)
   const [redirectModalOpen, setRedirectModalOpen] = useState(false)
   const redirectModalOpenRef = useRef(false)
   const [redirectAction, setRedirectAction] =
     useState<RedirectToOpenTabAction | null>(null)
+  const [favoritePruneModalMounted, setFavoritePruneModalMounted] =
+    useState(false)
+  const [favoritePruneModalOpen, setFavoritePruneModalOpen] = useState(false)
+  const favoritePruneModalOpenRef = useRef(false)
+  const [favoritePruneQueue, setFavoritePruneQueue] = useState<PrunableTabEntry[]>(
+    [],
+  )
+  const [favoritePruneIndex, setFavoritePruneIndex] = useState(0)
+  const favoritePruneStatsRef = useRef<{
+    beforeDate: Date
+    autoMoved: number
+    favoriteMoved: number
+    favoriteKept: number
+  } | null>(null)
 
   useEffect(() => {
     confirmModalOpenRef.current = confirmModalOpen
@@ -1056,22 +1117,57 @@ function App({ initialPrefs }: AppProps = {}) {
     importModalOpenRef.current = importModalOpen
   }, [importModalOpen])
 
+  useEffect(() => {
+    importTrashModalOpenRef.current = importTrashModalOpen
+  }, [importTrashModalOpen])
+
+  useEffect(() => {
+    favoritePruneModalOpenRef.current = favoritePruneModalOpen
+  }, [favoritePruneModalOpen])
+
   const confirmCopy = useMemo(() => {
     switch (confirmAction?.variant) {
       case 'all':
         return {
-          title: 'Mover tudo para a lixeira?',
+          title: 'Mover para a lixeira?',
           body:
-            'Todos os grupos e abas salvas serão movidos para a lixeira. Você poderá restaurá-los depois.',
+            'Escolha o que deseja mover. Você poderá restaurar depois.',
           confirmLabel: 'Mover para a lixeira',
         }
-      case 'group':
+      case 'group': {
+        const group = groups.find((g) => g.id === confirmAction.groupId)
+        if (!group) {
+          return {
+            title: 'Mover grupo para a lixeira?',
+            body: 'Escolha quais abas mover. Você poderá restaurar depois.',
+            confirmLabel: 'Mover para a lixeira',
+          }
+        }
+        const favoriteCount = countGroupFavoriteTabs(group)
+        const viewedNonFavoriteCount = countGroupViewedNonFavoriteTabs(group)
+        const parts = [
+          `Este grupo tem ${formatTabCount(group.tabs.length)}.`,
+        ]
+        if (favoriteCount > 0) {
+          parts.push(
+            favoriteCount === 1
+              ? '1 favorita será perguntada individualmente ao mover todos.'
+              : `${favoriteCount} favoritas serão perguntadas uma a uma ao mover todos.`,
+          )
+        }
+        if (viewedNonFavoriteCount > 0) {
+          parts.push(
+            viewedNonFavoriteCount === 1
+              ? '1 aba vista (não favorita) pode ser movida separadamente.'
+              : `${viewedNonFavoriteCount} abas vistas (não favoritas) podem ser movidas separadamente.`,
+          )
+        }
         return {
           title: 'Mover grupo para a lixeira?',
-          body:
-            'Todas as abas deste grupo serão movidas para a lixeira. Você poderá restaurá-las depois.',
+          body: parts.join(' '),
           confirmLabel: 'Mover para a lixeira',
         }
+      }
       case 'tab':
         return {
           title: 'Mover aba para a lixeira?',
@@ -1104,16 +1200,50 @@ function App({ initialPrefs }: AppProps = {}) {
           confirmLabel: 'Remover duplicadas',
         }
       }
-      case 'prune-viewed': {
-        const n = countPrunableViewedTabs(groups)
-        const monthsLabel = `${DEFAULT_VIEWED_PRUNE_MONTHS} meses`
+      case 'prune-by-date': {
+        if (!pruneBeforeDate) {
+          return {
+            title: 'Limpar por período?',
+            body:
+              'Escolha uma data abaixo para ver quais abas serão movidas para a lixeira.',
+            confirmLabel: 'Continuar',
+          }
+        }
+
+        const { autoMove, favoritePrompt } = splitTabsBeforeDate(
+          groups,
+          pruneBeforeDate,
+        )
+        const dateLabel = formatCalendarDate(pruneBeforeDate)
+        const total = autoMove.length + favoritePrompt.length
+        if (total === 0) {
+          return {
+            title: 'Limpar por período?',
+            body: `Nenhuma aba salva até ${dateLabel}. Escolha outra data abaixo.`,
+            confirmLabel: 'Continuar',
+          }
+        }
+
+        const parts: string[] = []
+        if (autoMove.length > 0) {
+          parts.push(
+            autoMove.length === 1
+              ? '1 aba será movida para a lixeira.'
+              : `${autoMove.length} abas serão movidas para a lixeira.`,
+          )
+        }
+        if (favoritePrompt.length > 0) {
+          parts.push(
+            favoritePrompt.length === 1
+              ? '1 favorita será perguntada individualmente.'
+              : `${favoritePrompt.length} favoritas serão perguntadas uma a uma.`,
+          )
+        }
+
         return {
-          title: 'Limpar abas vistas antigas?',
-          body:
-            n === 1
-              ? `Esta aba foi aberta na lista há mais de ${monthsLabel} e será movida para a lixeira. Favoritos não são removidos.`
-              : `Estas ${n} abas foram abertas na lista há mais de ${monthsLabel} e serão movidas para a lixeira. Favoritos não são removidos.`,
-          confirmLabel: 'Limpar vistas antigas',
+          title: 'Limpar por período?',
+          body: `Abas salvas até ${dateLabel}. ${parts.join(' ')}`,
+          confirmLabel: 'Continuar',
         }
       }
       default:
@@ -1123,7 +1253,7 @@ function App({ initialPrefs }: AppProps = {}) {
           confirmLabel: 'Confirmar',
         }
     }
-  }, [confirmAction, groups])
+  }, [confirmAction, groups, pruneBeforeDate])
 
   type GroupsPersistInput =
     | TabGroup[]
@@ -1149,6 +1279,7 @@ function App({ initialPrefs }: AppProps = {}) {
 
   const persistTrash = useCallback((next: TrashedEntry[]) => {
     const sorted = sortTrashEntries(next)
+    trashRef.current = sorted
     setTrash(sorted)
     void saveTrash(sorted)
   }, [])
@@ -1159,6 +1290,8 @@ function App({ initialPrefs }: AppProps = {}) {
       !editTitleModalMounted &&
       !redirectModalMounted &&
       !importModalMounted &&
+      !importTrashModalMounted &&
+      !favoritePruneModalMounted &&
       !mobileSidebarOpen
     )
       return
@@ -1172,6 +1305,8 @@ function App({ initialPrefs }: AppProps = {}) {
     editTitleModalMounted,
     redirectModalMounted,
     importModalMounted,
+    importTrashModalMounted,
+    favoritePruneModalMounted,
     mobileSidebarOpen,
   ])
 
@@ -1210,6 +1345,22 @@ function App({ initialPrefs }: AppProps = {}) {
     })
     return () => cancelAnimationFrame(id)
   }, [importModalMounted])
+
+  useEffect(() => {
+    if (!importTrashModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setImportTrashModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [importTrashModalMounted])
+
+  useEffect(() => {
+    if (!favoritePruneModalMounted) return
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setFavoritePruneModalOpen(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [favoritePruneModalMounted])
 
   const applyPreferences = useCallback(
     (prefs: UserPreferences, fromRemote = false) => {
@@ -1271,7 +1422,9 @@ function App({ initialPrefs }: AppProps = {}) {
       const sorted = sortGroupsList(loaded)
       groupsRef.current = sorted
       setGroups(sorted)
-      setTrash(sortTrashEntries(loadedTrash))
+      const sortedTrash = sortTrashEntries(loadedTrash)
+      trashRef.current = sortedTrash
+      setTrash(sortedTrash)
     })
   }, [])
 
@@ -1300,7 +1453,9 @@ function App({ initialPrefs }: AppProps = {}) {
       if (changes[TRASH_STORAGE_KEY]) {
         const next = changes[TRASH_STORAGE_KEY].newValue as TrashedEntry[] | undefined
         if (Array.isArray(next)) {
-          setTrash(sortTrashEntries(next))
+          const sorted = sortTrashEntries(next)
+          trashRef.current = sorted
+          setTrash(sorted)
         }
       }
 
@@ -1367,6 +1522,24 @@ function App({ initialPrefs }: AppProps = {}) {
   }, [importModalMounted])
 
   useEffect(() => {
+    if (!importTrashModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseImportTrashModal()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [importTrashModalMounted])
+
+  useEffect(() => {
+    if (!favoritePruneModalMounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') answerFavoritePrune(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [favoritePruneModalMounted, favoritePruneIndex, favoritePruneQueue])
+
+  useEffect(() => {
     if (!mobileSidebarOpen) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMobileSidebarOpen(false)
@@ -1388,6 +1561,93 @@ function App({ initialPrefs }: AppProps = {}) {
   function requestCloseRedirectModal() {
     redirectModalOpenRef.current = false
     setRedirectModalOpen(false)
+  }
+
+  function requestCloseFavoritePruneModal() {
+    favoritePruneModalOpenRef.current = false
+    setFavoritePruneModalOpen(false)
+  }
+
+  function handleFavoritePruneModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!favoritePruneModalOpenRef.current) {
+      setFavoritePruneModalMounted(false)
+      setFavoritePruneQueue([])
+      setFavoritePruneIndex(0)
+    }
+  }
+
+  function buildPruneByDateStatusMessage(stats: {
+    beforeDate: Date
+    autoMoved: number
+    favoriteMoved: number
+    favoriteKept: number
+  }): string {
+    const dateLabel = formatCalendarDate(stats.beforeDate)
+    const moved = stats.autoMoved + stats.favoriteMoved
+    if (moved === 0) {
+      if (stats.favoriteKept === 0) return ''
+      return `${stats.favoriteKept} favorita${stats.favoriteKept === 1 ? '' : 's'} mantida${stats.favoriteKept === 1 ? '' : 's'} (salvas até ${dateLabel}).`
+    }
+
+    const parts = [
+      `${moved} aba${moved === 1 ? '' : 's'} movida${moved === 1 ? '' : 's'} para a lixeira (salvas até ${dateLabel})`,
+    ]
+    if (stats.favoriteKept > 0) {
+      parts.push(
+        `${stats.favoriteKept} favorita${stats.favoriteKept === 1 ? '' : 's'} mantida${stats.favoriteKept === 1 ? '' : 's'}`,
+      )
+    }
+    return `${parts.join('; ')}.`
+  }
+
+  function finishFavoritePruneFlow() {
+    const stats = favoritePruneStatsRef.current
+    const message = stats ? buildPruneByDateStatusMessage(stats) : ''
+    if (message) setGroupsImportStatus(message)
+    favoritePruneStatsRef.current = null
+    requestCloseFavoritePruneModal()
+  }
+
+  function openFavoriteTabTrashPrompt(group: TabGroup, tab: SavedTab) {
+    favoritePruneStatsRef.current = null
+    setFavoritePruneQueue([createPrunableTabEntry(group, tab)])
+    setFavoritePruneIndex(0)
+    setFavoritePruneModalMounted(true)
+  }
+
+  function answerFavoritePrune(moveToTrash: boolean) {
+    const entry = favoritePruneQueue[favoritePruneIndex]
+    if (!entry) {
+      finishFavoritePruneFlow()
+      return
+    }
+
+    const stats = favoritePruneStatsRef.current
+
+    if (moveToTrash) {
+      const { groups: next, trashEntry } = applyPruneTabEntryToTrash(
+        groupsRef.current,
+        entry,
+      )
+      if (trashEntry) {
+        persist(next)
+        persistTrash([trashEntry, ...trashRef.current])
+        if (stats) stats.favoriteMoved += 1
+      }
+    } else if (stats) {
+      stats.favoriteKept += 1
+    }
+
+    const nextIndex = favoritePruneIndex + 1
+    if (nextIndex >= favoritePruneQueue.length) {
+      finishFavoritePruneFlow()
+      return
+    }
+
+    setFavoritePruneIndex(nextIndex)
   }
 
   function handleConfirmModalBackdropTransitionEnd(
@@ -1425,13 +1685,34 @@ function App({ initialPrefs }: AppProps = {}) {
     if (action.variant === 'remove-duplicates') {
       setDedupeKeepStrategy('newest')
     }
+    if (action.variant === 'prune-by-date') {
+      setPruneBeforeDate(undefined)
+    }
+    if (action.variant === 'tab') {
+      const group = groups.find((g) => g.id === action.groupId)
+      const tab = group?.tabs.find((t) => t.id === action.tabId)
+      if (group && tab && isTabFavorite(tab)) {
+        openFavoriteTabTrashPrompt(group, tab)
+        return
+      }
+    }
     setConfirmAction(action)
     setConfirmModalMounted(true)
   }
 
-  function openEditTabTitleModal(action: EditTabTitleAction) {
+  function openEditTabTitleModal(action: Extract<EditTitleAction, { variant: 'tab' }>) {
     setEditTitleAction(action)
     setEditTitleDraft(action.title)
+    setEditTitleModalMounted(true)
+  }
+
+  function openEditGroupTitleModal(groupId: string) {
+    const group = groups.find((g) => g.id === groupId)
+    if (!group) return
+    const title =
+      group.customTitle ?? formatGroupPrimary(new Date(group.savedAt))
+    setEditTitleAction({ variant: 'group', groupId, title })
+    setEditTitleDraft(title)
     setEditTitleModalMounted(true)
   }
 
@@ -1580,9 +1861,16 @@ function App({ initialPrefs }: AppProps = {}) {
     [groups],
   )
 
-  const prunableViewedCount = useMemo(
-    () => countPrunableViewedTabs(groups),
+  const savedTabCount = useMemo(
+    () => groups.reduce((n, g) => n + g.tabs.length, 0),
     [groups],
+  )
+
+  const viewedTabCount = useMemo(() => countViewedTabs(groups), [groups])
+
+  const pruneByDateCount = useMemo(
+    () => countTabsBeforeDate(groups, pruneBeforeDate),
+    [groups, pruneBeforeDate],
   )
 
   const duplicateRemovalPreview = useMemo(() => {
@@ -1590,9 +1878,23 @@ function App({ initialPrefs }: AppProps = {}) {
     return listDuplicateRemovalPreview(groups, dedupeKeepStrategy)
   }, [confirmAction, groups, dedupeKeepStrategy])
 
-  const prunableViewedPreview = useMemo(() => {
-    if (confirmAction?.variant !== 'prune-viewed') return []
-    return listPrunableViewedTabs(groups)
+  const pruneByDatePreview = useMemo(() => {
+    if (confirmAction?.variant !== 'prune-by-date') return []
+    return listTabsBeforeDate(groups, pruneBeforeDate)
+  }, [confirmAction, groups, pruneBeforeDate])
+
+  const groupTrashTarget = useMemo(() => {
+    if (confirmAction?.variant !== 'group') return null
+    const group = groups.find((g) => g.id === confirmAction.groupId)
+    if (!group) return null
+    const allSplit = splitGroupTabsForTrash(group, 'all')
+    const viewedSplit = splitGroupTabsForTrash(group, 'viewed-only')
+    return {
+      group,
+      allAutoCount: allSplit.autoMove.length,
+      allFavoriteCount: allSplit.favoritePrompt.length,
+      viewedCount: viewedSplit.autoMove.length,
+    }
   }, [confirmAction, groups])
 
   function dedupeEntryGroupLabel(entry: DuplicateRemovalEntry): string {
@@ -1602,7 +1904,7 @@ function App({ initialPrefs }: AppProps = {}) {
     )
   }
 
-  function prunableViewedEntryGroupLabel(entry: PrunableViewedEntry): string {
+  function pruneEntryGroupLabel(entry: PrunableTabEntry): string {
     return (
       entry.groupCustomTitle ??
       formatGroupPrimary(new Date(entry.groupSavedAt))
@@ -1656,12 +1958,28 @@ function App({ initialPrefs }: AppProps = {}) {
     )
   }
 
-  function submitEditTabTitle() {
+  function submitEditTitle() {
     if (!editTitleAction) return
     const title = editTitleDraft.trim()
-    if (title && title !== editTitleAction.title) {
-      setTabTitle(editTitleAction.groupId, editTitleAction.tabId, title)
+
+    if (editTitleAction.variant === 'tab') {
+      if (title && title !== editTitleAction.title) {
+        setTabTitle(editTitleAction.groupId, editTitleAction.tabId, title)
+      }
+    } else {
+      const group = groups.find((g) => g.id === editTitleAction.groupId)
+      const previousCustom = group?.customTitle?.trim() ?? ''
+      if (title !== previousCustom) {
+        persist(
+          groups.map((gr) =>
+            gr.id === editTitleAction.groupId
+              ? { ...gr, customTitle: title || undefined }
+              : gr,
+          ),
+        )
+      }
     }
+
     requestCloseEditTitleModal()
   }
 
@@ -1697,6 +2015,25 @@ function App({ initialPrefs }: AppProps = {}) {
     if (!importModalOpenRef.current) {
       setImportModalMounted(false)
       setPendingImport(null)
+      if (pendingImportTrashAfterCloseRef.current) {
+        pendingImportTrashAfterCloseRef.current = false
+        setImportTrashModalMounted(true)
+      }
+    }
+  }
+
+  function requestCloseImportTrashModal() {
+    importTrashModalOpenRef.current = false
+    setImportTrashModalOpen(false)
+  }
+
+  function handleImportTrashModalBackdropTransitionEnd(
+    e: React.TransitionEvent<HTMLDivElement>,
+  ) {
+    if (e.target !== e.currentTarget || e.propertyName !== 'opacity') return
+    if (!importTrashModalOpenRef.current) {
+      setImportTrashModalMounted(false)
+      setPendingImportTrash(null)
     }
   }
 
@@ -1704,28 +2041,90 @@ function App({ initialPrefs }: AppProps = {}) {
     persist(next)
     setGroupsImportStatus(statusMessage)
     requestCloseImportModal()
+    requestCloseImportTrashModal()
+  }
+
+  function finishImportReplace(groupsToImport: TabGroup[]) {
+    const importedTabCount = groupsToImport.reduce(
+      (total, group) => total + group.tabs.length,
+      0,
+    )
+    finishGroupsImport(
+      applyImportReplace(groupsToImport),
+      `Lista substituída — ${groupsToImport.length} grupo${groupsToImport.length === 1 ? '' : 's'}, ${formatTabCount(importedTabCount)}.`,
+    )
+  }
+
+  function finishImportAddMissing(groupsToImport: TabGroup[]) {
+    const next = applyImportAddMissing(groupsRef.current, groupsToImport)
+    const addedCount =
+      next.reduce((total, group) => total + group.tabs.length, 0) -
+      groupsRef.current.reduce((total, group) => total + group.tabs.length, 0)
+    if (addedCount === 0) {
+      setGroupsImportStatus('Nenhuma aba nova foi adicionada.')
+      requestCloseImportModal()
+      requestCloseImportTrashModal()
+      return
+    }
+    finishGroupsImport(
+      next,
+      `${addedCount} link${addedCount === 1 ? '' : 's'} novo${addedCount === 1 ? '' : 's'} adicionado${addedCount === 1 ? '' : 's'}.`,
+    )
+  }
+
+  function beginImportExecution(mode: 'replace' | 'add-missing') {
+    if (!pendingImport) return
+    if (mode === 'add-missing' && pendingImport.preview.newTabCount === 0) return
+
+    const { tabCount } = findImportTrashOverlap(
+      pendingImport.groups,
+      trashRef.current,
+    )
+    if (tabCount > 0) {
+      setPendingImportTrash({
+        groups: pendingImport.groups,
+        preview: pendingImport.preview,
+        mode,
+        overlapCount: tabCount,
+      })
+      pendingImportTrashAfterCloseRef.current = true
+      requestCloseImportModal()
+      return
+    }
+
+    if (mode === 'replace') {
+      finishImportReplace(pendingImport.groups)
+    } else {
+      finishImportAddMissing(pendingImport.groups)
+    }
+  }
+
+  function executeImportWithTrashChoice(restoreFromTrash: boolean) {
+    if (!pendingImportTrash) return
+
+    const { groups: imported, mode } = pendingImportTrash
+    const { urlKeys } = findImportTrashOverlap(imported, trashRef.current)
+    const groupsToImport = restoreFromTrash
+      ? imported
+      : filterImportedGroupsByUrls(imported, urlKeys)
+
+    if (restoreFromTrash && urlKeys.size > 0) {
+      persistTrash(removeTabsFromTrashByUrlKeys(trashRef.current, urlKeys))
+    }
+
+    if (mode === 'replace') {
+      finishImportReplace(groupsToImport)
+    } else {
+      finishImportAddMissing(groupsToImport)
+    }
   }
 
   function executeImportReplace() {
-    if (!pendingImport) return
-    const next = applyImportReplace(pendingImport.groups)
-    const { importedGroupCount, importedTabCount } = pendingImport.preview
-    finishGroupsImport(
-      next,
-      `Lista substituída — ${importedGroupCount} grupo${importedGroupCount === 1 ? '' : 's'}, ${formatTabCount(importedTabCount)}.`,
-    )
+    beginImportExecution('replace')
   }
 
   function executeImportAddMissing() {
-    if (!pendingImport) return
-    const { preview } = pendingImport
-    if (preview.newTabCount === 0) return
-
-    const next = applyImportAddMissing(groupsRef.current, pendingImport.groups)
-    finishGroupsImport(
-      next,
-      `${preview.newTabCount} link${preview.newTabCount === 1 ? '' : 's'} novo${preview.newTabCount === 1 ? '' : 's'} adicionado${preview.newTabCount === 1 ? '' : 's'}.`,
-    )
+    beginImportExecution('add-missing')
   }
 
   async function importGroupsFromFile(file: File) {
@@ -1781,12 +2180,6 @@ function App({ initialPrefs }: AppProps = {}) {
     if (a.variant === 'all') {
       persistTrash([...groups.map(createTrashedGroup), ...trash])
       persist([])
-    } else if (a.variant === 'group') {
-      const group = groups.find((g) => g.id === a.groupId)
-      if (group) {
-        persistTrash([createTrashedGroup(group), ...trash])
-      }
-      persist(groups.filter((g) => g.id !== a.groupId))
     } else if (a.variant === 'tab') {
       const group = groups.find((g) => g.id === a.groupId)
       const tab = group?.tabs.find((t) => t.id === a.tabId)
@@ -1809,6 +2202,31 @@ function App({ initialPrefs }: AppProps = {}) {
     requestCloseConfirmModal()
   }
 
+  function executeMoveGroupToTrash(groupId: string, scope: GroupTrashScope) {
+    const group = groupsRef.current.find((g) => g.id === groupId)
+    if (!group) return
+
+    const { autoMove, favoritePrompt } = splitGroupTabsForTrash(group, scope)
+
+    requestCloseConfirmModal()
+
+    if (autoMove.length > 0) {
+      const { groups: next, trashEntries } = applyPruneEntriesToTrash(
+        groupsRef.current,
+        autoMove,
+      )
+      persist(next)
+      persistTrash([...trashEntries, ...trashRef.current])
+    }
+
+    if (favoritePrompt.length > 0) {
+      favoritePruneStatsRef.current = null
+      setFavoritePruneQueue(favoritePrompt)
+      setFavoritePruneIndex(0)
+      setFavoritePruneModalMounted(true)
+    }
+  }
+
   function executeRemoveDuplicates(keep: 'newest' | 'oldest') {
     const { groups: next, trashEntries, removedCount } = deduplicateGroups(
       groups,
@@ -1824,24 +2242,90 @@ function App({ initialPrefs }: AppProps = {}) {
     requestCloseConfirmModal()
   }
 
-  function executePruneViewedTabs() {
-    const { groups: next, trashEntries, removedCount } = pruneOldViewedTabs(groups)
+  function executePruneByDate() {
+    if (!pruneBeforeDate) return
+
+    const beforeDate = pruneBeforeDate
+    const { autoMove, favoritePrompt } = splitTabsBeforeDate(
+      groupsRef.current,
+      beforeDate,
+    )
+
+    requestCloseConfirmModal()
+
+    let autoMoved = 0
+    if (autoMove.length > 0) {
+      const { groups: next, trashEntries, removedCount } =
+        applyPruneEntriesToTrash(groupsRef.current, autoMove)
+      autoMoved = removedCount
+      if (removedCount > 0) {
+        persist(next)
+        persistTrash([...trashEntries, ...trashRef.current])
+      }
+    }
+
+    if (favoritePrompt.length > 0) {
+      favoritePruneStatsRef.current = {
+        beforeDate,
+        autoMoved,
+        favoriteMoved: 0,
+        favoriteKept: 0,
+      }
+      setFavoritePruneQueue(favoritePrompt)
+      setFavoritePruneIndex(0)
+      setFavoritePruneModalMounted(true)
+      return
+    }
+
+    const message = buildPruneByDateStatusMessage({
+      beforeDate,
+      autoMoved,
+      favoriteMoved: 0,
+      favoriteKept: 0,
+    })
+    if (message) setGroupsImportStatus(message)
+  }
+
+  function executeMoveViewedToTrash() {
+    const { groups: next, trashEntries, removedCount } = moveViewedTabsToTrash(groups)
     if (removedCount > 0) {
       persistTrash([...trashEntries, ...trash])
       persist(next)
       setGroupsImportStatus(
-        `${removedCount} aba${removedCount === 1 ? '' : 's'} vista${removedCount === 1 ? '' : 's'} antiga${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira.`,
+        `${removedCount} aba${removedCount === 1 ? '' : 's'} vista${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira.`,
       )
     }
     requestCloseConfirmModal()
   }
 
-  function restoreFromTrash(trashId: string) {
+  function restoreTabFromTrash(trashId: string, tabId: string) {
     const entry = trash.find((e) => e.id === trashId)
     if (!entry) return
-    const next = restoreTrashedEntry(groups, entry)
+
+    const { groups: next, updatedEntry } = restoreSingleTabFromTrashedEntry(
+      groups,
+      entry,
+      tabId,
+    )
     persist(next.filter((g) => g.tabs.length > 0))
-    persistTrash(trash.filter((e) => e.id !== trashId))
+    persistTrash(
+      updatedEntry
+        ? trash.map((e) => (e.id === trashId ? updatedEntry : e))
+        : trash.filter((e) => e.id !== trashId),
+    )
+  }
+
+  function restoreTrashDay(dayKey: string) {
+    const dayEntries = trash.filter(
+      (e) => trashDayKey(e.restore.savedAt) === dayKey,
+    )
+    if (dayEntries.length === 0) return
+
+    const next = restoreTrashedEntries(groups, dayEntries)
+    persist(next.filter((g) => g.tabs.length > 0))
+    persistTrash(
+      trash.filter((e) => trashDayKey(e.restore.savedAt) !== dayKey),
+    )
   }
 
   function toggleTabFavorite(groupId: string, tabId: string) {
@@ -1903,23 +2387,6 @@ function App({ initialPrefs }: AppProps = {}) {
       await chrome.tabs.create({ url: tab.url, active: activateNext })
       activateNext = false
     }
-  }
-
-  function editGroupTitle(groupId: string) {
-    const g = groups.find((x) => x.id === groupId)
-    if (!g) return
-    const defaultLabel =
-      g.customTitle ?? formatGroupPrimary(new Date(g.savedAt))
-    const value = window.prompt('Nome do grupo', defaultLabel)
-    if (value === null) return
-    const trimmed = value.trim()
-    persist(
-      groups.map((gr) =>
-        gr.id === groupId
-          ? { ...gr, customTitle: trimmed || undefined }
-          : gr,
-      ),
-    )
   }
 
   return (
@@ -2174,20 +2641,16 @@ function App({ initialPrefs }: AppProps = {}) {
               <button
                 type="button"
                 className="sidebar-action-row"
-                disabled={prunableViewedCount === 0}
-                onClick={() => openConfirmDeleteModal({ variant: 'prune-viewed' })}
+                disabled={savedTabCount === 0}
+                onClick={() => openConfirmDeleteModal({ variant: 'prune-by-date' })}
               >
                 <span className="sidebar-action-row-icon" aria-hidden>
-                  <IconPruneViewed />
+                  <IconCalendarPeriod />
                 </span>
                 <span className="sidebar-action-row-body">
-                  <span className="sidebar-action-row-label">Limpar vistas antigas</span>
+                  <span className="sidebar-action-row-label">Limpar por período</span>
                   <span className="sidebar-action-row-hint">
-                    {prunableViewedCount === 0
-                      ? `Nenhuma vista há mais de ${DEFAULT_VIEWED_PRUNE_MONTHS} meses`
-                      : prunableViewedCount === 1
-                        ? '1 aba vista antiga (exceto favoritos)'
-                        : `${prunableViewedCount} abas vistas antigas (exceto favoritos)`}
+                    Mover abas salvas até uma data para a lixeira
                   </span>
                 </span>
               </button>
@@ -2206,10 +2669,10 @@ function App({ initialPrefs }: AppProps = {}) {
                 </span>
                 <span className="sidebar-action-row-body">
                   <span className="sidebar-action-row-label">
-                    Mover tudo para a lixeira
+                    Mover para a lixeira
                   </span>
                   <span className="sidebar-action-row-hint">
-                    Todos os grupos e abas salvas
+                    Tudo ou apenas abas já vistas
                   </span>
                 </span>
               </button>
@@ -2386,6 +2849,20 @@ function App({ initialPrefs }: AppProps = {}) {
                         </span>
                       </div>
                       <span className="group-badge">{tabCount}</span>
+                      <div className="group-header-tools">
+                        <button
+                          type="button"
+                          className="group-tool-btn"
+                          aria-label="Restaurar todas as abas do dia"
+                          title="Restaurar todas as abas do dia"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            restoreTrashDay(day.dayKey)
+                          }}
+                        >
+                          <IconRestore />
+                        </button>
+                      </div>
                     </div>
                     <div
                       className={`group-accordion${expanded ? ' group-accordion--open' : ''}`}
@@ -2416,6 +2893,7 @@ function App({ initialPrefs }: AppProps = {}) {
                                 onSetTags={() => {}}
                                 onRequestEditTitle={() =>
                                   openEditTabTitleModal({
+                                    variant: 'tab',
                                     groupId: entry.restore.groupId,
                                     tabId: t.id,
                                     title: t.title,
@@ -2436,7 +2914,7 @@ function App({ initialPrefs }: AppProps = {}) {
                                     !t.viewed,
                                   )
                                 }
-                                onRestore={() => restoreFromTrash(entry.id)}
+                                onRestore={() => restoreTabFromTrash(entry.id, t.id)}
                               />
                             )),
                           )}
@@ -2534,7 +3012,7 @@ function App({ initialPrefs }: AppProps = {}) {
                         title="Editar nome do grupo"
                         onClick={(e) => {
                           e.stopPropagation()
-                          editGroupTitle(g.id)
+                          openEditGroupTitleModal(g.id)
                         }}
                       >
                         <IconPencil />
@@ -2583,6 +3061,7 @@ function App({ initialPrefs }: AppProps = {}) {
                             onSetTags={(tags) => setTabTags(g.id, t.id, tags)}
                             onRequestEditTitle={() =>
                               openEditTabTitleModal({
+                                variant: 'tab',
                                 groupId: g.id,
                                 tabId: t.id,
                                 title: t.title,
@@ -2633,24 +3112,30 @@ function App({ initialPrefs }: AppProps = {}) {
                 onClick={(e) => e.stopPropagation()}
                 onSubmit={(e) => {
                   e.preventDefault()
-                  submitEditTabTitle()
+                  submitEditTitle()
                 }}
               >
                 <h2 id="edit-title-modal-title" className="modal-title">
-                  Editar título do site
+                  {editTitleAction.variant === 'group'
+                    ? 'Editar nome do grupo'
+                    : 'Editar título do site'}
                 </h2>
                 <p id="edit-title-modal-desc" className="modal-body">
-                  Altere como este site aparece na sua lista de abas salvas.
+                  {editTitleAction.variant === 'group'
+                    ? 'Dê um nome personalizado ao grupo. Deixe em branco para voltar a usar a data do salvamento.'
+                    : 'Altere como este site aparece na sua lista de abas salvas.'}
                 </p>
                 <label className="modal-field">
-                  <span className="modal-field-label">Título</span>
+                  <span className="modal-field-label">
+                    {editTitleAction.variant === 'group' ? 'Nome' : 'Título'}
+                  </span>
                   <input
                     ref={editTitleInputRef}
                     className="modal-input"
                     type="text"
                     value={editTitleDraft}
                     onChange={(e) => setEditTitleDraft(e.target.value)}
-                    maxLength={160}
+                    maxLength={editTitleAction.variant === 'group' ? 120 : 160}
                   />
                 </label>
                 <div className="modal-actions">
@@ -2664,7 +3149,10 @@ function App({ initialPrefs }: AppProps = {}) {
                   <button
                     type="submit"
                     className="btn btn-primary modal-btn"
-                    disabled={editTitleDraft.trim().length === 0}
+                    disabled={
+                      editTitleAction.variant === 'tab' &&
+                      editTitleDraft.trim().length === 0
+                    }
                   >
                     Salvar
                   </button>
@@ -2719,6 +3207,81 @@ function App({ initialPrefs }: AppProps = {}) {
           )
         : null}
 
+      {favoritePruneModalMounted && favoritePruneQueue[favoritePruneIndex]
+        ? createPortal(
+            <div
+              className={`modal-backdrop${favoritePruneModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={() => answerFavoritePrune(false)}
+              onTransitionEnd={handleFavoritePruneModalBackdropTransitionEnd}
+            >
+              <div
+                className="modal-dialog modal-dialog--dedupe"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="favorite-prune-modal-title"
+                aria-describedby="favorite-prune-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="favorite-prune-modal-title" className="modal-title">
+                  Mover favorito para a lixeira?
+                </h2>
+                <p id="favorite-prune-modal-desc" className="modal-body">
+                  Esta aba está marcada como favorita. Deseja movê-la para a
+                  lixeira mesmo assim?
+                  {favoritePruneQueue.length > 1 ? (
+                    <>
+                      {' '}
+                      ({favoritePruneIndex + 1} de {favoritePruneQueue.length})
+                    </>
+                  ) : null}
+                </p>
+                <div className="favorite-prune-preview">
+                  <img
+                    className="dedupe-preview-favicon"
+                    src={faviconUrl(favoritePruneQueue[favoritePruneIndex].tab.url)}
+                    alt=""
+                    width={24}
+                    height={24}
+                    loading="lazy"
+                  />
+                  <div className="dedupe-preview-text">
+                    <span
+                      className="dedupe-preview-title"
+                      title={favoritePruneQueue[favoritePruneIndex].tab.title}
+                    >
+                      {favoritePruneQueue[favoritePruneIndex].tab.title}
+                    </span>
+                    <span className="dedupe-preview-meta">
+                      {favoritePruneQueue[favoritePruneIndex].urlLabel}
+                      <span aria-hidden> · </span>
+                      {pruneEntryGroupLabel(favoritePruneQueue[favoritePruneIndex])}
+                    </span>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={() => answerFavoritePrune(false)}
+                  >
+                    Manter favorito
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger-solid modal-btn"
+                    onClick={() => answerFavoritePrune(true)}
+                  >
+                    <IconTrash />
+                    Mover para a lixeira
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
       {confirmModalMounted && confirmAction
         ? createPortal(
             <div
@@ -2728,7 +3291,7 @@ function App({ initialPrefs }: AppProps = {}) {
               onTransitionEnd={handleConfirmModalBackdropTransitionEnd}
             >
               <div
-                className={`modal-dialog${confirmAction.variant === 'remove-duplicates' || confirmAction.variant === 'prune-viewed' ? ' modal-dialog--dedupe' : ''}`}
+                className={`modal-dialog${confirmAction.variant === 'remove-duplicates' || confirmAction.variant === 'prune-by-date' ? ' modal-dialog--dedupe' : ''}${confirmAction.variant === 'all' || confirmAction.variant === 'group' ? ' modal-dialog--import' : ''}`}
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby="confirm-modal-title"
@@ -2808,51 +3371,153 @@ function App({ initialPrefs }: AppProps = {}) {
                     </ul>
                   </>
                 ) : null}
-                {confirmAction.variant === 'prune-viewed' ? (
-                  <ul
-                    className="dedupe-preview-list"
-                    aria-label="Abas vistas antigas"
+                {confirmAction.variant === 'group' && groupTrashTarget ? (
+                  <div
+                    className="import-choice-list"
+                    role="group"
+                    aria-label="O que mover do grupo para a lixeira"
                   >
-                    {prunableViewedPreview.map((entry) => (
-                      <li key={entry.tab.id} className="dedupe-preview-item">
-                        <button
-                          type="button"
-                          className="dedupe-preview-open"
-                          title={entry.tab.url}
-                          onClick={() =>
-                            void handleOpenSavedTab(
-                              entry.groupId,
-                              entry.tab.id,
-                              entry.tab.url,
-                              entry.tab.viewed === true,
-                            )
-                          }
-                        >
-                          <img
-                            className="dedupe-preview-favicon"
-                            src={faviconUrl(entry.tab.url)}
-                            alt=""
-                            width={20}
-                            height={20}
-                            loading="lazy"
-                          />
-                          <div className="dedupe-preview-text">
-                            <span
-                              className="dedupe-preview-title"
-                              title={entry.tab.title}
+                    <button
+                      type="button"
+                      className="import-choice-btn import-choice-btn--danger"
+                      disabled={groupTrashTarget.group.tabs.length === 0}
+                      onClick={() =>
+                        executeMoveGroupToTrash(confirmAction.groupId, 'all')
+                      }
+                    >
+                      <span className="import-choice-btn__title">Mover todos</span>
+                      <span className="import-choice-btn__hint">
+                        {groupTrashTarget.group.tabs.length === 0
+                          ? 'Nenhuma aba neste grupo.'
+                          : groupTrashTarget.allFavoriteCount === 0
+                            ? `${formatTabCount(groupTrashTarget.group.tabs.length)} ser${groupTrashTarget.group.tabs.length === 1 ? 'á' : 'ão'} movida${groupTrashTarget.group.tabs.length === 1 ? '' : 's'} para a lixeira.`
+                            : `${formatTabCount(groupTrashTarget.allAutoCount)} ser${groupTrashTarget.allAutoCount === 1 ? 'á' : 'ão'} movida${groupTrashTarget.allAutoCount === 1 ? '' : 's'} agora; ${formatTabCount(groupTrashTarget.allFavoriteCount)} favorita${groupTrashTarget.allFavoriteCount === 1 ? '' : 's'} ${groupTrashTarget.allFavoriteCount === 1 ? 'será perguntada' : 'serão perguntadas'} uma a uma.`}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="import-choice-btn import-choice-btn--primary"
+                      disabled={groupTrashTarget.viewedCount === 0}
+                      onClick={() =>
+                        executeMoveGroupToTrash(
+                          confirmAction.groupId,
+                          'viewed-only',
+                        )
+                      }
+                    >
+                      <span className="import-choice-btn__title">
+                        Mover apenas vistas
+                      </span>
+                      <span className="import-choice-btn__hint">
+                        {groupTrashTarget.viewedCount === 0
+                          ? 'Nenhuma aba vista (exceto favoritos) neste grupo.'
+                          : `${formatTabCount(groupTrashTarget.viewedCount)} vista${groupTrashTarget.viewedCount === 1 ? '' : 's'} ser${groupTrashTarget.viewedCount === 1 ? 'á' : 'ão'} movida${groupTrashTarget.viewedCount === 1 ? '' : 's'}; favoritos e não vistas permanecem.`}
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+                {confirmAction.variant === 'all' ? (
+                  <div
+                    className="import-choice-list"
+                    role="group"
+                    aria-label="O que mover para a lixeira"
+                  >
+                    <button
+                      type="button"
+                      className="import-choice-btn import-choice-btn--danger"
+                      onClick={executeConfirmDelete}
+                    >
+                      <span className="import-choice-btn__title">
+                        Mover tudo
+                      </span>
+                      <span className="import-choice-btn__hint">
+                        {groups.length === 0
+                          ? 'Nenhum grupo salvo.'
+                          : groups.length === 1
+                            ? `1 grupo com ${formatTabCount(savedTabCount)} será movido para a lixeira.`
+                            : `${groups.length} grupos com ${formatTabCount(savedTabCount)} serão movidos para a lixeira.`}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="import-choice-btn import-choice-btn--primary"
+                      disabled={viewedTabCount === 0}
+                      onClick={executeMoveViewedToTrash}
+                    >
+                      <span className="import-choice-btn__title">
+                        Mover apenas vistas
+                      </span>
+                      <span className="import-choice-btn__hint">
+                        {viewedTabCount === 0
+                          ? 'Nenhuma aba marcada como vista.'
+                          : `${formatTabCount(viewedTabCount)} ser${viewedTabCount === 1 ? 'á' : 'ão'} movida${viewedTabCount === 1 ? '' : 's'}; abas não vistas permanecem.`}
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+                {confirmAction.variant === 'prune-by-date' ? (
+                  <>
+                    <div className="modal-field modal-field--prune-date">
+                      <ModalDatePicker
+                        label="Mover abas salvas até"
+                        value={pruneBeforeDate}
+                        maxDate={new Date()}
+                        onChange={setPruneBeforeDate}
+                      />
+                    </div>
+                    {pruneByDatePreview.length > 0 ? (
+                      <ul
+                        className="dedupe-preview-list"
+                        aria-label="Abas que serão movidas"
+                      >
+                        {pruneByDatePreview.map((entry) => (
+                          <li key={entry.tab.id} className="dedupe-preview-item">
+                            <button
+                              type="button"
+                              className="dedupe-preview-open"
+                              title={entry.tab.url}
+                              onClick={() =>
+                                void handleOpenSavedTab(
+                                  entry.groupId,
+                                  entry.tab.id,
+                                  entry.tab.url,
+                                  entry.tab.viewed === true,
+                                )
+                              }
                             >
-                              {entry.tab.title}
-                            </span>
-                            <span className="dedupe-preview-meta">
-                              {entry.urlLabel}
-                              <span aria-hidden> · </span>
-                              {prunableViewedEntryGroupLabel(entry)}
-                            </span>
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                              <img
+                                className="dedupe-preview-favicon"
+                                src={faviconUrl(entry.tab.url)}
+                                alt=""
+                                width={20}
+                                height={20}
+                                loading="lazy"
+                              />
+                              <div className="dedupe-preview-text">
+                                <span
+                                  className="dedupe-preview-title"
+                                  title={entry.tab.title}
+                                >
+                                  {entry.tab.title}
+                                </span>
+                                <span className="dedupe-preview-meta">
+                                  {entry.urlLabel}
+                                  <span aria-hidden> · </span>
+                                  {pruneEntryGroupLabel(entry)}
+                                  {isTabFavorite(entry.tab) ? (
+                                    <>
+                                      <span aria-hidden> · </span>
+                                      Favorito — será perguntado
+                                    </>
+                                  ) : null}
+                                </span>
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
                 ) : null}
                 <div className="modal-actions">
                   <button
@@ -2873,16 +3538,18 @@ function App({ initialPrefs }: AppProps = {}) {
                       <IconDedupe />
                       Remover duplicadas
                     </button>
-                  ) : confirmAction.variant === 'prune-viewed' ? (
+                  ) : confirmAction.variant === 'prune-by-date' ? (
                     <button
                       type="button"
                       className="btn btn-danger-solid modal-btn"
-                      onClick={executePruneViewedTabs}
+                      disabled={!pruneBeforeDate || pruneByDateCount === 0}
+                      onClick={executePruneByDate}
                     >
-                      <IconPruneViewed />
-                      Limpar vistas antigas
+                      <IconCalendarPeriod />
+                      Continuar
                     </button>
-                  ) : (
+                  ) : confirmAction.variant === 'all' ||
+                    confirmAction.variant === 'group' ? null : (
                     <button
                       type="button"
                       className="btn btn-danger-solid modal-btn"
@@ -2977,6 +3644,76 @@ function App({ initialPrefs }: AppProps = {}) {
                     type="button"
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseImportModal}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {importTrashModalMounted && pendingImportTrash
+        ? createPortal(
+            <div
+              className={`modal-backdrop${importTrashModalOpen ? ' modal-backdrop--open' : ''}`}
+              role="presentation"
+              onClick={requestCloseImportTrashModal}
+              onTransitionEnd={handleImportTrashModalBackdropTransitionEnd}
+            >
+              <div
+                className="modal-dialog modal-dialog--import"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="import-trash-modal-title"
+                aria-describedby="import-trash-modal-desc"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="import-trash-modal-title" className="modal-title">
+                  Abas do arquivo importado estão na lixeira
+                </h2>
+                <p id="import-trash-modal-desc" className="modal-body">
+                  {formatTabCount(pendingImportTrash.overlapCount)} do arquivo
+                  importado {pendingImportTrash.overlapCount === 1 ? 'está' : 'estão'}{' '}
+                  na lixeira. Deseja mantê-las na lixeira ou restaurar para a lista
+                  salva?
+                </p>
+                <div
+                  className="import-choice-list"
+                  role="group"
+                  aria-label="Abas na lixeira"
+                >
+                  <button
+                    type="button"
+                    className="import-choice-btn import-choice-btn--primary"
+                    onClick={() => executeImportWithTrashChoice(true)}
+                  >
+                    <span className="import-choice-btn__title">
+                      Restaurar abas
+                    </span>
+                    <span className="import-choice-btn__hint">
+                      Remove da lixeira e inclui na importação.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="import-choice-btn"
+                    onClick={() => executeImportWithTrashChoice(false)}
+                  >
+                    <span className="import-choice-btn__title">
+                      Manter na lixeira
+                    </span>
+                    <span className="import-choice-btn__hint">
+                      Mantém na lixeira e não adiciona essas abas à lista salva.
+                    </span>
+                  </button>
+                </div>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline modal-btn"
+                    onClick={requestCloseImportTrashModal}
                   >
                     Cancelar
                   </button>

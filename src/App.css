@@ -722,6 +722,10 @@ html[data-theme='dark'] .btn-danger:hover:not(:disabled) {
   flex-shrink: 0;
 }
 
+.main-tab-leading:not(:has(.main-tab-badge)) {
+  display: none;
+}
+
 .main-tab-icon {
   display: none;
   flex-shrink: 0;
@@ -1833,10 +1837,147 @@ html[data-theme='dark'] .modal-dialog {
 
 .modal-dialog--dedupe {
   max-width: min(100vw - 32px, 28rem);
+  overflow: visible;
 }
 
 .modal-dialog--dedupe .modal-body {
   margin-bottom: 14px;
+}
+
+.modal-field--prune-date {
+  margin: 0 0 14px;
+}
+
+.modal-date-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-date-picker-trigger {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, var(--main-bg));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.modal-date-picker-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.modal-date-picker-trigger:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.modal-date-picker--open .modal-date-picker-trigger {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.modal-date-picker-value {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.modal-date-picker-value--placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.modal-date-picker-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--text-muted);
+}
+
+.modal-date-picker-panel,
+.modal-date-picker-popover {
+  padding: 12px 10px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.14),
+    0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.modal-date-picker-popover {
+  position: fixed;
+  z-index: 2147483647;
+  max-height: min(360px, calc(100vh - 16px));
+  overflow: auto;
+}
+
+html[data-theme='dark'] .modal-date-picker-panel,
+html[data-theme='dark'] .modal-date-picker-popover {
+  background: var(--surface);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    0 2px 12px rgba(0, 0, 0, 0.38),
+    0 0 0 0.5px rgba(255, 255, 255, 0.05);
+}
+
+.modal-date-picker-popover .modal-date-picker-calendar.rdp-root,
+.modal-date-picker-panel .modal-date-picker-calendar.rdp-root {
+  margin: 0 auto;
+  background: var(--surface);
+}
+
+.modal-date-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.modal-date-picker-footer-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.modal-date-picker-footer-btn:hover,
+.modal-date-picker-footer-btn:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
+.favorite-prune-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--main-bg) 40%, var(--surface));
 }
 
 .modal-dialog--import {
@@ -2383,6 +2524,10 @@ html[data-theme='dark'] .dedupe-preview-open:hover {
     align-items: center;
     justify-content: center;
     gap: 0;
+  }
+
+  .main-tab-leading:not(:has(.main-tab-badge)) {
+    display: inline-flex;
   }
 
   .main-tab-icon {

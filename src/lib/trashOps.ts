@@ -70,3 +70,49 @@ export function restoreTrashedEntry(
     i === idx ? { ...g, tabs: [tab, ...g.tabs] } : g,
   )
 }
+
+export function restoreSingleTabFromTrashedEntry(
+  groups: TabGroup[],
+  entry: TrashedEntry,
+  tabId: string,
+): {
+  groups: TabGroup[]
+  updatedEntry: TrashedEntry | null
+} {
+  const tab = entry.group.tabs.find((t) => t.id === tabId)
+  if (!tab) return { groups, updatedEntry: entry }
+
+  const tabEntry: TrashedEntry = {
+    ...entry,
+    kind: 'tab',
+    group: {
+      ...entry.group,
+      id: entry.kind === 'tab' ? entry.group.id : `trash-wrap-${tab.id}`,
+      tabs: [tab],
+    },
+  }
+
+  const nextGroups = restoreTrashedEntry(groups, tabEntry)
+  const remainingTabs = entry.group.tabs.filter((t) => t.id !== tabId)
+  if (remainingTabs.length === 0) {
+    return { groups: nextGroups, updatedEntry: null }
+  }
+
+  return {
+    groups: nextGroups,
+    updatedEntry: {
+      ...entry,
+      group: { ...entry.group, tabs: remainingTabs },
+    },
+  }
+}
+
+export function restoreTrashedEntries(
+  groups: TabGroup[],
+  entries: TrashedEntry[],
+): TabGroup[] {
+  return entries.reduce(
+    (current, entry) => restoreTrashedEntry(current, entry),
+    groups,
+  )
+}

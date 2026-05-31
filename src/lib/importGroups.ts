@@ -1,6 +1,7 @@
 import { tabUrlKey } from './browserTab'
 import { normalizeAllGroups } from './groupsStorage'
 import type { SavedTab, TabGroup } from '../types/tabs'
+import type { TrashedEntry } from '../types/trash'
 
 export type GroupsExportPayload = {
   app?: string
@@ -100,4 +101,65 @@ export function applyImportAddMissing(
   }
 
   return [...groupById.values()].filter((group) => group.tabs.length > 0)
+}
+
+export function collectTrashUrlKeys(trash: TrashedEntry[]): Set<string> {
+  const keys = new Set<string>()
+  for (const entry of trash) {
+    for (const tab of entry.group.tabs) {
+      keys.add(tabUrlKey(tab.url))
+    }
+  }
+  return keys
+}
+
+export function findImportTrashOverlap(
+  imported: TabGroup[],
+  trash: TrashedEntry[],
+): { urlKeys: Set<string>; tabCount: number } {
+  const trashKeys = collectTrashUrlKeys(trash)
+  const urlKeys = new Set<string>()
+  for (const group of imported) {
+    for (const tab of group.tabs) {
+      const key = tabUrlKey(tab.url)
+      if (trashKeys.has(key)) urlKeys.add(key)
+    }
+  }
+  return { urlKeys, tabCount: urlKeys.size }
+}
+
+export function filterImportedGroupsByUrls(
+  imported: TabGroup[],
+  excludeUrlKeys: Set<string>,
+): TabGroup[] {
+  return imported
+    .map((group) => ({
+      ...group,
+      tabs: group.tabs.filter((tab) => !excludeUrlKeys.has(tabUrlKey(tab.url))),
+    }))
+    .filter((group) => group.tabs.length > 0)
+}
+
+export function removeTabsFromTrashByUrlKeys(
+  trash: TrashedEntry[],
+  urlKeys: Set<string>,
+): TrashedEntry[] {
+  if (urlKeys.size === 0) return trash
+
+  const next: TrashedEntry[] = []
+  for (const entry of trash) {
+    const remainingTabs = entry.group.tabs.filter(
+      (tab) => !urlKeys.has(tabUrlKey(tab.url)),
+    )
+    if (remainingTabs.length === 0) continue
+    if (remainingTabs.length === entry.group.tabs.length) {
+      next.push(entry)
+      continue
+    }
+    next.push({
+      ...entry,
+      group: { ...entry.group, tabs: remainingTabs },
+    })
+  }
+  return next
 }
