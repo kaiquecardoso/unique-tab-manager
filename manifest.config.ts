@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin'
 export default defineManifest({
   manifest_version: 3,
   name: 'One Tab Manager',
-  version: '1.0.3',
+  version: '1.0.4',
   description:
     'Ao clicar no ícone, a aba atual é fechada e salva na lista. Gerencie tudo na página de opções.',
   permissions: [

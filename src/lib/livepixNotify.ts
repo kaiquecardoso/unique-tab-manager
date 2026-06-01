@@ -5,6 +5,8 @@ const LIVEPIX_CLICKED_KEY = 'oneTabLivepixClickedUrls'
 const DONATION_PANEL_URL_PATTERNS = [
   'https://dashboard.livepix.gg/*',
   'https://pixgg.com/*',
+  'https://www.pixgg.com/*',
+  'https://*.pixgg.com/*',
 ]
 
 export async function notifyLivePixRefreshUrlMarks(): Promise<void> {

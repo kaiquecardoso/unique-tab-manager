@@ -12,9 +12,12 @@ import {
   ensureLivepixClickedLinksLoaded,
   markLivepixLinkClicked,
 } from './lib/livepixClickedLinks'
+import { showRedirectPrompt } from './lib/redirectPrompt'
 import { showPageToast } from './lib/pageToast'
 import { saveLinkFromPage } from './lib/saveLinkFromPage'
 import saveButtonLogoUrl from './assets/logo.png'
+
+/** Integracao com paineis de doacao: LivePix e PixGG (adaptadores abaixo). */
 
 const PROCESSED_ATTR = 'data-one-tab-donation-save'
 const SAVE_BTN_ATTR = 'data-one-tab-save'
@@ -63,12 +66,16 @@ const DONATION_PANEL_ADAPTERS: DonationPanelAdapter[] = [
     matchesLocation: () => {
       const host = window.location.hostname
       return (
-        (host === 'pixgg.com' || host.endsWith('.pixgg.com')) &&
-        window.location.pathname.includes('painel-de-donates')
+        (host === 'pixgg.com' ||
+          host === 'www.pixgg.com' ||
+          host.endsWith('.pixgg.com')) &&
+        window.location.pathname.toLowerCase().includes('painel-de-donates')
       )
     },
     itemSelector: '.messagesContent',
-    getMessageParagraph: (item) => item.querySelector('.body-messages p'),
+    getMessageParagraph: (item) =>
+      item.querySelector('.body-messages p') ??
+      item.querySelector('.body-messages'),
     getActionBar: (item) => item.querySelector('.controlerWrapper'),
     getReferenceControl: (actionBar) =>
       actionBar.querySelector('.controlerButton'),
@@ -260,26 +267,91 @@ function registerLinkClickTracking(): void {
   if (root.dataset.oneTabLinkClicks === 'true') return
   root.dataset.oneTabLinkClicks = 'true'
 
-  const markClickedLink = (event: MouseEvent): void => {
-    const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
-      'a[data-one-tab-link]',
-    )
-    if (!anchor?.href) return
-
-    const isPrimaryClick = event.type === 'click' && event.button === 0
-    const isMiddleClick =
-      (event.type === 'auxclick' && event.button === 1) ||
-      (event.type === 'mousedown' && event.button === 1)
-
-    if (!isPrimaryClick && !isMiddleClick) return
-
-    void markLivepixLinkClicked(anchor.href)
+  const markClickedLink = (url: string, anchor: HTMLAnchorElement): void => {
+    void markLivepixLinkClicked(url)
     setLinkKnownState(anchor, true)
   }
 
-  document.addEventListener('click', markClickedLink, true)
-  document.addEventListener('auxclick', markClickedLink, true)
-  document.addEventListener('mousedown', markClickedLink, true)
+  async function navigateOneTabLink(
+    anchor: HTMLAnchorElement,
+    active: boolean,
+  ): Promise<void> {
+    const url = anchor.href
+    if (!url) return
+
+    markClickedLink(url, anchor)
+
+    try {
+      const response = (await chrome.runtime.sendMessage({
+        type: 'find-open-tab',
+        url,
+      })) as { tabId?: number } | undefined
+
+      if (typeof response?.tabId === 'number') {
+        const confirmed = await showRedirectPrompt()
+        if (confirmed) {
+          await chrome.runtime.sendMessage({
+            type: 'focus-tab',
+            tabId: response.tabId,
+          })
+        }
+        return
+      }
+
+      await chrome.runtime.sendMessage({
+        type: 'open-tab',
+        url,
+        active,
+      })
+    } catch {
+      /* extensao indisponivel */
+    }
+  }
+
+  document.addEventListener(
+    'mousedown',
+    (event) => {
+      const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
+        'a[data-one-tab-link]',
+      )
+      if (!anchor?.href || event.button !== 1) return
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    true,
+  )
+
+  document.addEventListener(
+    'click',
+    (event) => {
+      const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
+        'a[data-one-tab-link]',
+      )
+      if (!anchor?.href) return
+      if (event.button !== 0) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      void navigateOneTabLink(anchor, true)
+    },
+    true,
+  )
+
+  document.addEventListener(
+    'auxclick',
+    (event) => {
+      const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
+        'a[data-one-tab-link]',
+      )
+      if (!anchor?.href) return
+      if (event.button !== 1) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      void navigateOneTabLink(anchor, false)
+    },
+    true,
+  )
 }
 
 function startObserver(adapter: DonationPanelAdapter): void {

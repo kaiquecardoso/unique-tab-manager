@@ -1,4 +1,9 @@
-import { tabUrlKey, tabUrlsMatch } from './lib/browserTab'
+import {
+  findOpenBrowserTab,
+  focusBrowserTab,
+  tabUrlKey,
+  tabUrlsMatch,
+} from './lib/browserTab'
 import { loadGroups } from './lib/groupsStorage'
 import { handleContextMenuClick } from './lib/contextMenuActions'
 import {
@@ -617,6 +622,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     return
+  }
+
+  if (message?.type === 'find-open-tab' && typeof message.url === 'string') {
+    void (async () => {
+      const existing = await findOpenBrowserTab(message.url)
+      sendResponse({
+        tabId: typeof existing?.id === 'number' ? existing.id : undefined,
+      })
+    })()
+
+    return true
+  }
+
+  if (message?.type === 'focus-tab' && typeof message.tabId === 'number') {
+    void (async () => {
+      try {
+        const tab = await chrome.tabs.get(message.tabId)
+        await focusBrowserTab(tab)
+        sendResponse({ ok: true })
+      } catch {
+        sendResponse({ ok: false })
+      }
+    })()
+
+    return true
+  }
+
+  if (message?.type === 'open-tab' && typeof message.url === 'string') {
+    void (async () => {
+      try {
+        await chrome.tabs.create({
+          url: message.url,
+          active: message.active !== false,
+        })
+        sendResponse({ ok: true })
+      } catch {
+        sendResponse({ ok: false })
+      }
+    })()
+
+    return true
   }
 
   if (message?.type === 'check-url-status' && Array.isArray(message.urls)) {
