@@ -1,10 +1,12 @@
 import { isHostnameExcluded, hostnameFromUrl } from './excludedSites'
+import { isSocialVideoTabUrl } from './socialVideoHosts'
 
 export const CONTEXT_MENU = {
   OPEN_LIST: 'open-onetab',
   SAVE_WINDOW: 'save-window',
   SAVE_TAB_GROUP: 'save-tab-group',
   SAVE_SELECTED: 'save-selected',
+  SAVE_SOCIAL_VIDEO: 'save-social-video',
   SEP_1: 'sep-1',
   SAVE_THIS: 'save-this-tab',
   SAVE_EXCEPT_THIS: 'save-except-this',
@@ -79,6 +81,11 @@ async function buildContextMenus(): Promise<void> {
       contexts: ['action', 'page'],
     }),
     createContextMenu({
+      id: CONTEXT_MENU.SAVE_SOCIAL_VIDEO,
+      title: 'Enviar apenas abas de youtube, instagram e tiktok',
+      contexts: ['action', 'page'],
+    }),
+    createContextMenu({
       id: CONTEXT_MENU.SEP_2,
       type: 'separator',
       contexts: ['action', 'page'],
@@ -149,9 +156,13 @@ export async function updateContextMenuAvailability(
   let hasTabGroup = false
   let hasLeft = false
   let hasRight = false
+  let hasSocialVideoTabs = false
 
   if (hasTab && tab) {
     windowTabs = await chrome.tabs.query({ windowId })
+    hasSocialVideoTabs = windowTabs.some(
+      (t) => typeof t.url === 'string' && isSocialVideoTabUrl(t.url),
+    )
     highlightedCount = windowTabs.filter((t) => t.highlighted).length
     hasTabGroup = typeof tab.groupId === 'number' && tab.groupId !== -1
     const index = tab.index ?? 0
@@ -165,6 +176,9 @@ export async function updateContextMenuAvailability(
     }),
     updateContextMenu(CONTEXT_MENU.SAVE_SELECTED, {
       enabled: hasTab && highlightedCount >= 2,
+    }),
+    updateContextMenu(CONTEXT_MENU.SAVE_SOCIAL_VIDEO, {
+      enabled: hasTab && hasSocialVideoTabs,
     }),
     updateContextMenu(CONTEXT_MENU.SAVE_LEFT, {
       enabled: hasTab && hasLeft,

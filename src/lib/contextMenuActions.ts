@@ -1,6 +1,7 @@
 import { saveBrowserTabsToStorage } from './batchSaveTabs'
 import { CONTEXT_MENU } from './contextMenuSetup'
 import { toggleExcludedHostname } from './excludedSites'
+import { isSocialVideoTabUrl } from './socialVideoHosts'
 
 function isSavableTab(tab: chrome.tabs.Tab): boolean {
   return typeof tab.id === 'number' && typeof tab.url === 'string' && tab.url.length > 0
@@ -44,6 +45,13 @@ export async function handleContextMenuClick(
     case CONTEXT_MENU.SAVE_SELECTED: {
       const windowTabs = await tabsInWindow(tab.windowId)
       targets = windowTabs.filter((t) => t.highlighted)
+      break
+    }
+    case CONTEXT_MENU.SAVE_SOCIAL_VIDEO: {
+      const windowTabs = await tabsInWindow(tab.windowId)
+      targets = windowTabs.filter(
+        (t) => typeof t.url === 'string' && isSocialVideoTabUrl(t.url),
+      )
       break
     }
     case CONTEXT_MENU.SAVE_EXCEPT_THIS: {
