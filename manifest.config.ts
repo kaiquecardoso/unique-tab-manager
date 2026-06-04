@@ -5,7 +5,7 @@ export default defineManifest({
   name: 'One Tab Manager',
   version: '1.0.5',
   description:
-    'Ao clicar no ícone, a aba atual é fechada e salva na lista. Gerencie tudo na página de opções.',
+    'Salve abas com um clique e feche as guias. Grupos por dia, favoritos, tags, busca e envio em lote — dados só no navegador, sem nuvem.',
   permissions: [
     'storage',
     'tabs',
