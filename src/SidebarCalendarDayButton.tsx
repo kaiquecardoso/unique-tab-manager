@@ -1,16 +1,11 @@
 import { useEffect, useRef } from 'react'
 import type { DayButtonProps } from 'react-day-picker'
+import { useI18n } from './i18n/context'
 import {
   dotTierFromViewedPercent,
   type DayViewedStats,
   viewedPercent,
 } from './lib/tabsPerCalendarDay'
-
-function dotTierLabel(tier: 'red' | 'yellow' | 'green'): string {
-  if (tier === 'red') return 'menos da metade vista'
-  if (tier === 'yellow') return 'quase tudo visto'
-  return 'tudo visto'
-}
 
 export function createSidebarCalendarDayButton(
   viewedByDay: Map<string, DayViewedStats>,
@@ -18,6 +13,7 @@ export function createSidebarCalendarDayButton(
   return function SidebarCalendarDayButton(props: DayButtonProps) {
     const { day, modifiers, children, ...buttonProps } = props
     const ref = useRef<HTMLButtonElement>(null)
+    const { t } = useI18n()
 
     useEffect(() => {
       if (modifiers.focused) ref.current?.focus()
@@ -37,7 +33,12 @@ export function createSidebarCalendarDayButton(
             <span
               className={`sidebar-cal-dot sidebar-cal-dot--${tier}`}
               aria-hidden
-              title={`${viewed} de ${total} aba${total === 1 ? '' : 's'} vista${viewed === 1 ? '' : 's'} (${percent.toFixed(percent % 1 === 0 ? 0 : 1)}%) — ${dotTierLabel(tier)}`}
+              title={t('calendar.viewedTooltip', {
+                viewed,
+                total,
+                percent: percent.toFixed(percent % 1 === 0 ? 0 : 1),
+                tier: t(`calendar.tier.${tier}`),
+              })}
             />
           ) : null}
         </span>

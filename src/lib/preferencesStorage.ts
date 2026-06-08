@@ -1,4 +1,10 @@
 import type { DateRange } from 'react-day-picker'
+import {
+  DEFAULT_LOCALE,
+  detectBrowserLocale,
+  isSupportedLocale,
+  type SupportedLocale,
+} from '../i18n'
 
 export const PREFERENCES_STORAGE_KEY = 'oneTabPreferencesV1'
 export const PREFERENCES_WRITE_SOURCE_KEY = 'oneTabPreferencesWriteSourceV1'
@@ -21,6 +27,7 @@ export type DateRangePreference = {
 export type UserPreferences = {
   theme: 'light' | 'dark'
   simpleLayout: boolean
+  locale: SupportedLocale
   search: string
   activeTagFilters: string[]
   groupDateRange?: DateRangePreference
@@ -29,6 +36,7 @@ export type UserPreferences = {
 export const DEFAULT_PREFERENCES: UserPreferences = {
   theme: 'light',
   simpleLayout: false,
+  locale: detectBrowserLocale(),
   search: '',
   activeTagFilters: [],
 }
@@ -121,6 +129,7 @@ export async function loadLocalPreferences(): Promise<UserPreferences> {
   const prefs: UserPreferences = {
     theme: p.theme === 'dark' ? 'dark' : 'light',
     simpleLayout: p.simpleLayout === true,
+    locale: isSupportedLocale(p.locale) ? p.locale : DEFAULT_LOCALE,
     search: typeof p.search === 'string' ? p.search : '',
     activeTagFilters: Array.isArray(p.activeTagFilters)
       ? p.activeTagFilters.filter((t): t is string => typeof t === 'string')

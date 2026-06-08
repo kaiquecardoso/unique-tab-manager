@@ -1,3 +1,6 @@
+import { t } from '../i18n/core'
+import { loadStoredLocale } from '../i18n/getLocale'
+import type { SupportedLocale } from '../i18n/types'
 import { isHostnameExcluded, hostnameFromUrl } from './excludedSites'
 import { isSocialVideoTabUrl } from './socialVideoHosts'
 
@@ -50,14 +53,26 @@ function updateContextMenu(
 }
 
 let installPromise: Promise<void> | null = null
+let cachedLocale: SupportedLocale | null = null
 
-async function buildContextMenus(): Promise<void> {
+async function getMenuLocale(): Promise<SupportedLocale> {
+  if (!cachedLocale) {
+    cachedLocale = await loadStoredLocale()
+  }
+  return cachedLocale
+}
+
+export function invalidateContextMenuLocale(): void {
+  cachedLocale = null
+}
+
+async function buildContextMenus(locale: SupportedLocale): Promise<void> {
   await contextMenuCallback((done) => chrome.contextMenus.removeAll(done))
 
   await Promise.all([
     createContextMenu({
       id: CONTEXT_MENU.OPEN_LIST,
-      title: 'Abrir One Tab Manager',
+      title: t(locale, 'context.openList'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
@@ -67,22 +82,22 @@ async function buildContextMenus(): Promise<void> {
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_WINDOW,
-      title: 'Enviar todas as guias desta janela',
+      title: t(locale, 'context.saveWindow'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_TAB_GROUP,
-      title: 'Enviar todas as guias deste grupo de guias',
+      title: t(locale, 'context.saveTabGroup'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_SELECTED,
-      title: 'Enviar as guias selecionadas',
+      title: t(locale, 'context.saveSelected'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_SOCIAL_VIDEO,
-      title: 'Enviar apenas abas de youtube, instagram e tiktok',
+      title: t(locale, 'context.saveSocialVideo'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
@@ -92,27 +107,27 @@ async function buildContextMenus(): Promise<void> {
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_THIS,
-      title: 'Enviar somente esta guia',
+      title: t(locale, 'context.saveThis'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_EXCEPT_THIS,
-      title: 'Enviar todas as guias, exceto esta',
+      title: t(locale, 'context.saveExceptThis'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_LEFT,
-      title: 'Enviar as guias à esquerda',
+      title: t(locale, 'context.saveLeft'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_RIGHT,
-      title: 'Enviar as guias à direita',
+      title: t(locale, 'context.saveRight'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_ALL_WINDOWS,
-      title: 'Enviar todas as guias de todas as janelas',
+      title: t(locale, 'context.saveAllWindows'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
@@ -122,12 +137,12 @@ async function buildContextMenus(): Promise<void> {
     }),
     createContextMenu({
       id: CONTEXT_MENU.TOGGLE_EXCLUDE,
-      title: 'Excluir este site do One Tab Manager',
+      title: t(locale, 'context.excludeSite'),
       contexts: ['action', 'page'],
     }),
     createContextMenu({
       id: CONTEXT_MENU.SAVE_LINK,
-      title: 'Salvar link no One Tab Manager',
+      title: t(locale, 'context.saveLink'),
       contexts: ['link'],
     }),
   ])
@@ -135,7 +150,10 @@ async function buildContextMenus(): Promise<void> {
 
 export function installContextMenus(): Promise<void> {
   if (!installPromise) {
-    installPromise = buildContextMenus().finally(() => {
+    installPromise = (async () => {
+      const locale = await getMenuLocale()
+      await buildContextMenus(locale)
+    })().finally(() => {
       installPromise = null
     })
   }
@@ -145,6 +163,7 @@ export function installContextMenus(): Promise<void> {
 export async function updateContextMenuAvailability(
   tab?: chrome.tabs.Tab,
 ): Promise<void> {
+  const locale = await getMenuLocale()
   await installContextMenus()
 
   const windowId = tab?.windowId
@@ -206,8 +225,8 @@ export async function updateContextMenuAvailability(
     updates.push(
       updateContextMenu(CONTEXT_MENU.TOGGLE_EXCLUDE, {
         title: excluded
-          ? 'Permitir este site no One Tab Manager'
-          : 'Excluir este site do One Tab Manager',
+          ? t(locale, 'context.allowSite')
+          : t(locale, 'context.excludeSite'),
         enabled: true,
       }),
     )

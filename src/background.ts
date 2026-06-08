@@ -6,11 +6,15 @@ import {
 } from './lib/browserTab'
 import { loadGroups } from './lib/groupsStorage'
 import { handleContextMenuClick } from './lib/contextMenuActions'
+import { t } from './i18n/core'
+import { loadStoredLocale } from './i18n/getLocale'
 import {
   CONTEXT_MENU,
   installContextMenus,
+  invalidateContextMenuLocale,
   registerContextMenuRefreshListeners,
 } from './lib/contextMenuSetup'
+import { PREFERENCES_STORAGE_KEY } from './lib/preferencesStorage'
 import { saveGroupsLocally } from './lib/groupsNotify'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
 
@@ -186,9 +190,10 @@ async function resolveLinkedRenderedTitle(
 }
 
 async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
+  const locale = await loadStoredLocale()
   let bestTitle = normalizeTitle(tab.title)
   if (!tab.id || !tab.url || !isGenericSiteTitle(bestTitle, tab.url)) {
-    return bestTitle || 'Sem título'
+    return bestTitle || t(locale, 'misc.noTitle')
   }
 
   for (const delay of [150, 250, 400]) {
@@ -206,7 +211,7 @@ async function resolveTabTitle(tab: chrome.tabs.Tab): Promise<string> {
     }
   }
 
-  return bestTitle || 'Sem título'
+  return bestTitle || t(locale, 'misc.noTitle')
 }
 
 function addTabToTodayGroup(groups: TabGroup[], newTab: SavedTab): TabGroup[] {
@@ -246,9 +251,10 @@ async function saveCurrentTabToStorage(tab: chrome.tabs.Tab): Promise<void> {
   )
   if (!resolved.proceed) {
     if (resolved.choice === 'keep-old') {
+      const locale = await loadStoredLocale()
       await notifyTabWithToast(
         tab.id,
-        'Link já salvo — mantida a versão salva',
+        t(locale, 'toast.linkAlreadySaved'),
         false,
         tab.url,
         false,
@@ -531,6 +537,12 @@ void (async () => {
   registerContextMenuRefreshListeners()
 })()
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes[PREFERENCES_STORAGE_KEY]) return
+  invalidateContextMenuLocale()
+  void installContextMenus()
+})
+
 chrome.action.onClicked.addListener(() => {
   void (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -565,10 +577,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         )
         if (!proceed) return
 
+        const locale = await loadStoredLocale()
         if (typeof tab?.id === 'number') {
           void notifyTabWithToast(
             tab.id,
-            'Salvando link',
+            t(locale, 'toast.savingLink'),
             false,
             info.linkUrl,
             true,
@@ -585,7 +598,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         if (typeof tab?.id === 'number') {
           await notifyTabWithToast(
             tab.id,
-            'Link salvo no OneTab',
+            t(locale, 'toast.linkSaved'),
             false,
             info.linkUrl,
             false,
@@ -593,10 +606,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           )
         }
       } catch {
+        const locale = await loadStoredLocale()
         if (typeof tab?.id === 'number') {
           await notifyTabWithToast(
             tab.id,
-            'Nao foi possivel salvar o link',
+            t(locale, 'toast.linkSaveFailed'),
             true,
             info.linkUrl,
             false,

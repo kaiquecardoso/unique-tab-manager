@@ -8,7 +8,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { DayPicker } from 'react-day-picker'
-import { ptBR } from 'date-fns/locale'
+import { useI18n } from './i18n/context'
 
 type ModalDatePickerProps = {
   value?: Date
@@ -16,6 +16,7 @@ type ModalDatePickerProps = {
   maxDate?: Date
   label: string
   placeholder?: string
+  todayLabel?: string
 }
 
 type PopoverCoords = {
@@ -32,14 +33,6 @@ function startOfDay(date: Date): Date {
   const next = new Date(date)
   next.setHours(0, 0, 0, 0)
   return next
-}
-
-function formatDisplayDate(date: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  }).format(date)
 }
 
 function IconCalendar() {
@@ -101,8 +94,12 @@ export function ModalDatePicker({
   onChange,
   maxDate = new Date(),
   label,
-  placeholder = 'Selecione uma data',
+  placeholder: placeholderProp,
+  todayLabel: todayLabelProp,
 }: ModalDatePickerProps) {
+  const { t, formatDisplayDate, dateFnsLocale } = useI18n()
+  const placeholder = placeholderProp ?? t('calendar.selectDate')
+  const todayLabel = todayLabelProp ?? t('calendar.today')
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState<PopoverCoords | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -190,7 +187,7 @@ export function ModalDatePicker({
               selected={hasValue ? value : undefined}
               defaultMonth={hasValue ? value : maxDate}
               onSelect={selectDate}
-              locale={ptBR}
+              locale={dateFnsLocale}
               weekStartsOn={1}
               showOutsideDays
               fixedWeeks
@@ -203,7 +200,7 @@ export function ModalDatePicker({
                 className="modal-date-picker-footer-btn"
                 onClick={selectToday}
               >
-                Hoje
+                {todayLabel}
               </button>
             </div>
           </div>,

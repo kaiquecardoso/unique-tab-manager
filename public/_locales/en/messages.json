@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "One Tab Manager"
+  },
+  "extDescription": {
+    "message": "Save tabs with one click and close them. Groups by day, favorites, tags, search and batch send."
+  },
+  "actionTitle": {
+    "message": "Save current tab to OneTab"
+  }
+}

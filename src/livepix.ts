@@ -12,6 +12,9 @@ import {
   ensureLivepixClickedLinksLoaded,
   markLivepixLinkClicked,
 } from './lib/livepixClickedLinks'
+import { t } from './i18n/core'
+import { loadStoredLocale } from './i18n/getLocale'
+import type { SupportedLocale } from './i18n/types'
 import { showRedirectPrompt } from './lib/redirectPrompt'
 import { showPageToast } from './lib/pageToast'
 import { saveLinkFromPage } from './lib/saveLinkFromPage'
@@ -23,6 +26,23 @@ const PROCESSED_ATTR = 'data-one-tab-donation-save'
 const SAVE_BTN_ATTR = 'data-one-tab-save'
 const SAVE_WRAP_ATTR = 'data-one-tab-save-wrap'
 const STYLES_ID = 'one-tab-donation-panel-styles'
+
+let cachedLocale: SupportedLocale | null = null
+
+async function getLivepixLocale(): Promise<SupportedLocale> {
+  if (!cachedLocale) {
+    cachedLocale = await loadStoredLocale()
+  }
+  return cachedLocale
+}
+
+function livepixLabels(locale: SupportedLocale) {
+  return {
+    save: t(locale, 'livepix.saveToOneTab'),
+    saveLink: t(locale, 'livepix.saveLink'),
+    noLink: t(locale, 'livepix.noLink'),
+  }
+}
 
 type DonationPanelAdapter = {
   id: string
@@ -188,14 +208,15 @@ function createSaveButton(
   adapter: DonationPanelAdapter,
   url: string | undefined,
   title: string | undefined,
+  localeLabels: { save: string; saveLink: string; noLink: string },
 ): HTMLButtonElement {
   ensureDonationPanelStyles()
 
   const button = document.createElement('button')
   button.type = 'button'
   if (adapter.buttonClassName) button.className = adapter.buttonClassName
-  button.setAttribute('aria-label', 'Salvar no OneTab')
-  button.title = url ? 'Salvar link no OneTab' : 'Nenhum link na mensagem'
+  button.setAttribute('aria-label', localeLabels.save)
+  button.title = url ? localeLabels.saveLink : localeLabels.noLink
   button.setAttribute(SAVE_BTN_ATTR, 'true')
   button.disabled = !url
 
@@ -215,17 +236,19 @@ function createSaveButton(
     event.stopPropagation()
     if (!url) return
 
-    showPageToast('Salvando link', false, url, true, title)
-    saveLinkFromPage({ url, title })
+    void loadStoredLocale().then((locale) => {
+      showPageToast(t(locale, 'toast.savingLink'), false, url, true, title)
+      saveLinkFromPage({ url, title })
+    })
   })
 
   return button
 }
 
-function processDonationItem(
+async function processDonationItem(
   adapter: DonationPanelAdapter,
   item: HTMLElement,
-): void {
+): Promise<void> {
   const messageParagraph = adapter.getMessageParagraph(item)
   if (messageParagraph) {
     const linkifyOptions = { accent: adapter.id === 'livepix' }
@@ -246,7 +269,13 @@ function processDonationItem(
   const reference = adapter.getReferenceControl(actionBar)
   const title =
     messageText.replace(/\s+/g, ' ').trim().slice(0, 120) || undefined
-  const saveButton = createSaveButton(adapter, primaryUrl, title)
+  const locale = await getLivepixLocale()
+  const saveButton = createSaveButton(
+    adapter,
+    primaryUrl,
+    title,
+    livepixLabels(locale),
+  )
   adapter.mountSaveControl(actionBar, saveButton, reference)
   item.setAttribute(PROCESSED_ATTR, 'true')
 }
@@ -257,7 +286,7 @@ function scanDonationItems(
 ): void {
   root.querySelectorAll(adapter.itemSelector).forEach((node) => {
     if (!(node instanceof HTMLElement)) return
-    processDonationItem(adapter, node)
+    void processDonationItem(adapter, node)
   })
   scheduleRefreshKnownLinks(root)
 }

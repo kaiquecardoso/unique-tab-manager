@@ -1,10 +1,13 @@
+import { t } from '../i18n/core'
+import { loadStoredLocale } from '../i18n/getLocale'
 import { detectHostDarkMode } from './pageTheme'
 
 /**
  * Modal na pagina (DOM direto, sem shadow).
  * Pergunta se o usuario quer ir para uma aba ja aberta.
  */
-export function showRedirectPrompt(): Promise<boolean> {
+export async function showRedirectPrompt(): Promise<boolean> {
+  const locale = await loadStoredLocale()
   const PROMPT_ID = 'one-tab-manager-redirect-prompt'
 
   const existing = document.getElementById(PROMPT_ID)
@@ -72,15 +75,14 @@ export function showRedirectPrompt(): Promise<boolean> {
       : '0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.06)'
 
     const heading = document.createElement('h2')
-    heading.textContent = 'Aba já aberta'
+    heading.textContent = t(locale, 'redirect.title')
     heading.style.fontSize = '16px'
     heading.style.fontWeight = '600'
     heading.style.margin = '0 0 8px 0'
     heading.style.lineHeight = '1.3'
 
     const body = document.createElement('p')
-    body.textContent =
-      'Essa aba já está aberta. Deseja ser redirecionado para ela?'
+    body.textContent = t(locale, 'redirect.body')
     body.style.fontSize = '14px'
     body.style.color = isDarkMode ? '#a1a1aa' : '#71717a'
     body.style.margin = '0 0 20px 0'
@@ -141,9 +143,11 @@ export function showRedirectPrompt(): Promise<boolean> {
 
     panel.appendChild(heading)
     panel.appendChild(body)
-    actions.appendChild(makeButton('Cancelar', false, () => finish(false)))
     actions.appendChild(
-      makeButton('Ir para a aba', true, () => finish(true)),
+      makeButton(t(locale, 'redirect.cancel'), false, () => finish(false)),
+    )
+    actions.appendChild(
+      makeButton(t(locale, 'redirect.confirm'), true, () => finish(true)),
     )
     panel.appendChild(actions)
 

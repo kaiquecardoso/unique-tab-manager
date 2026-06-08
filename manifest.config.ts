@@ -2,10 +2,10 @@ import { defineManifest } from '@crxjs/vite-plugin'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'One Tab Manager',
-  version: '1.0.5',
-  description:
-    'Salve abas com um clique e feche as guias. Grupos por dia, favoritos, tags, busca e envio em lote.',
+  name: '__MSG_extName__',
+  version: '1.1.0',
+  description: '__MSG_extDescription__',
+  default_locale: 'en',
   permissions: [
     'storage',
     'tabs',
@@ -26,7 +26,7 @@ export default defineManifest({
     type: 'module',
   },
   action: {
-    default_title: 'Salvar aba atual no OneTab',
+    default_title: '__MSG_actionTitle__',
     default_icon: {
       16: 'src/assets/logo.png',
       32: 'src/assets/logo.png',

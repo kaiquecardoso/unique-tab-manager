@@ -1,4 +1,6 @@
 import './livepix'
+import { t } from './i18n/core'
+import { loadStoredLocale } from './i18n/getLocale'
 import { showDuplicatePrompt } from './lib/duplicatePrompt'
 import { showPageToast } from './lib/pageToast'
 import { saveLinkFromPage } from './lib/saveLinkFromPage'
@@ -46,8 +48,16 @@ function getAnchorFromTarget(target: EventTarget | null): HTMLAnchorElement | nu
 }
 
 function sendSaveMessage(message: SaveLinkMessage): void {
-  showPageToast('Salvando link', false, message.url, true, message.title)
-  saveLinkFromPage({ url: message.url, title: message.title })
+  void loadStoredLocale().then((locale) => {
+    showPageToast(
+      t(locale, 'toast.savingLink'),
+      false,
+      message.url,
+      true,
+      message.title,
+    )
+    saveLinkFromPage({ url: message.url, title: message.title })
+  })
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -90,8 +100,10 @@ function saveLinkFromShortcut(anchor: HTMLAnchorElement): void {
     title: getAnchorTitle(anchor),
   }
 
-  showPageToast('Salvando link', false, href, true, message.title)
-  sendSaveMessage(message)
+  void loadStoredLocale().then((locale) => {
+    showPageToast(t(locale, 'toast.savingLink'), false, href, true, message.title)
+    sendSaveMessage(message)
+  })
 }
 
 function reportContextLink(anchor: HTMLAnchorElement): void {

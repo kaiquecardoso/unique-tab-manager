@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "One Tab Manager"
+  },
+  "extDescription": {
+    "message": "Salve abas com um clique e feche as guias. Grupos por dia, favoritos, tags, busca e envio em lote."
+  },
+  "actionTitle": {
+    "message": "Salvar aba atual no OneTab"
+  }
+}

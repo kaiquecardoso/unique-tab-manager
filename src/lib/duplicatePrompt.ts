@@ -1,3 +1,6 @@
+import { formatSavedAt, t } from '../i18n/core'
+import { loadStoredLocale } from '../i18n/getLocale'
+
 export type DuplicateSaveChoice = 'keep-new' | 'keep-old' | 'cancel'
 
 export type DuplicatePromptOptions = {
@@ -15,27 +18,11 @@ export type DuplicatePromptOptions = {
  * Modal na pagina (DOM direto, sem shadow).
  * Deve ser autocontido para funcionar com chrome.scripting.executeScript.
  */
-export function showDuplicatePrompt(
+export async function showDuplicatePrompt(
   options: DuplicatePromptOptions,
 ): Promise<DuplicateSaveChoice> {
+  const locale = await loadStoredLocale()
   const PROMPT_ID = 'one-tab-manager-duplicate-prompt'
-
-  const cAacute = String.fromCharCode(0xe1)
-  const cAtilde = String.fromCharCode(0xe3)
-  const cEcirc = String.fromCharCode(0xea)
-  const copy = {
-    heading: 'Este link j' + cAacute + ' est' + cAacute + ' salvo',
-    hint: 'Qual vers' + cAtilde + 'o voc' + cEcirc + ' quer manter?',
-    labelOlder: 'Mais antiga:',
-    labelNewer: 'Mais recente:',
-    currentTab: 'Aba atual',
-    cancel: 'Cancelar',
-    skipThis: 'Pular esta aba',
-    keepOlder: 'Manter a salva',
-    keepNewer: 'Usar a aba atual',
-    batchHint:
-      'As outras duplicatas serão perguntadas em seguida, uma por vez.',
-  }
 
   function normalizeTitle(title: string | undefined): string {
     return title?.replace(/\s+/g, ' ').trim() ?? ''
@@ -50,21 +37,6 @@ export function showDuplicatePrompt(
     }
   }
 
-  function formatSavedAt(iso: string | undefined): string {
-    if (!iso) return ''
-    const t = Date.parse(iso)
-    if (!Number.isFinite(t)) return ''
-    const d = new Date(t)
-    const date = d.toLocaleDateString('pt-BR')
-    const time = d.toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-    const as = String.fromCharCode(0xe0) + 's'
-    return date + ' ' + as + ' ' + time
-  }
-
   const existing = document.getElementById(PROMPT_ID)
   if (existing) existing.remove()
 
@@ -72,7 +44,7 @@ export function showDuplicatePrompt(
   const faviconUrl = getFaviconUrl(options.url)
   const existingLabel = normalizeTitle(options.existingTitle) || options.url
   const newLabel = normalizeTitle(options.newTitle)
-  const savedAtLabel = formatSavedAt(options.existingAddedAt)
+  const savedAtLabel = formatSavedAt(locale, options.existingAddedAt)
   const multiDuplicateBatch =
     options.batchMode === true && (options.progress?.total ?? 0) > 1
 
@@ -138,16 +110,19 @@ export function showDuplicatePrompt(
     const heading = document.createElement('div')
     heading.textContent =
       multiDuplicateBatch && options.progress
-        ? `${copy.heading} (${options.progress.current} de ${options.progress.total})`
-        : copy.heading
+        ? t(locale, 'duplicate.headingProgress', {
+            current: options.progress.current,
+            total: options.progress.total,
+          })
+        : t(locale, 'duplicate.heading')
     heading.style.fontSize = '15px'
     heading.style.fontWeight = '600'
     heading.style.margin = '0 0 8px 0'
 
     const hint = document.createElement('div')
     hint.textContent = multiDuplicateBatch
-      ? `${copy.hint} ${copy.batchHint}`
-      : copy.hint
+      ? `${t(locale, 'duplicate.hint')} ${t(locale, 'duplicate.batchHint')}`
+      : t(locale, 'duplicate.hint')
     hint.style.fontSize = '13px'
     hint.style.color = isDarkMode ? '#a1a1aa' : '#71717a'
     hint.style.margin = '0 0 14px 0'
@@ -285,23 +260,33 @@ export function showDuplicatePrompt(
     panel.appendChild(hint)
     panel.appendChild(
       makeOptionRow(
-        copy.labelOlder,
+        t(locale, 'duplicate.labelOlder'),
         existingLabel,
-        savedAtLabel ? `Salva em ${savedAtLabel}` : undefined,
+        savedAtLabel || undefined,
         false,
       ),
     )
     if (newLabel) {
       panel.appendChild(
-        makeOptionRow(copy.labelNewer, newLabel, copy.currentTab, true),
+        makeOptionRow(
+          t(locale, 'duplicate.labelNewer'),
+          newLabel,
+          t(locale, 'duplicate.currentTab'),
+          true,
+        ),
       )
     }
 
     actions.appendChild(
-      makeButton(multiDuplicateBatch ? copy.skipThis : copy.cancel, 'cancel'),
+      makeButton(
+        multiDuplicateBatch
+          ? t(locale, 'duplicate.skipThis')
+          : t(locale, 'duplicate.cancel'),
+        'cancel',
+      ),
     )
-    actions.appendChild(makeButton(copy.keepOlder, 'keep-old'))
-    actions.appendChild(makeButton(copy.keepNewer, 'keep-new', true))
+    actions.appendChild(makeButton(t(locale, 'duplicate.keepOlder'), 'keep-old'))
+    actions.appendChild(makeButton(t(locale, 'duplicate.keepNewer'), 'keep-new', true))
     panel.appendChild(actions)
 
     host.appendChild(backdrop)

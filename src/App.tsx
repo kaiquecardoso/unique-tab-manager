@@ -10,7 +10,8 @@ import {
 import { createPortal } from 'react-dom'
 import type { DateRange } from 'react-day-picker'
 import { DayPicker } from 'react-day-picker'
-import { ptBR } from 'date-fns/locale'
+import { I18nProvider, useI18n } from './i18n/context'
+import { SUPPORTED_LOCALES, type SupportedLocale } from './i18n/types'
 import {
   loadGroups,
   saveGroups,
@@ -126,52 +127,6 @@ function formatTabHostLabel(url: string, simpleLayout: boolean): string {
       .replace(/^http:\/\/www\./i, '')
   } catch {
     return url
-  }
-}
-
-function formatShortDate(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(d)
-}
-
-/** Rótulo principal do grupo (só data, sem horário — hora fica na meta à direita). */
-function formatGroupPrimary(d: Date): string {
-  return formatShortDate(d)
-}
-
-function formatTimeOnly(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d)
-}
-
-function formatRelativeAgo(saved: Date): string {
-  const sec = Math.round((Date.now() - saved.getTime()) / 1000)
-  if (sec < 45) return 'agora'
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min} min atrás`
-  const h = Math.floor(min / 60)
-  if (h < 48) return `${h} h atrás`
-  const days = Math.floor(h / 24)
-  return `${days} d atrás`
-}
-
-function formatGroupMetaLine(d: Date): string {
-  return `${formatShortDate(d)} | ${formatTimeOnly(d)} | ${formatRelativeAgo(d)}`
-}
-
-function formatTabAddedAt(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat('pt-BR', {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(new Date(iso))
-  } catch {
-    return ''
   }
 }
 
@@ -491,14 +446,6 @@ function IconDedupe() {
   )
 }
 
-function formatCalendarDate(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(d)
-}
-
 function IconCalendarPeriod() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -562,8 +509,6 @@ function IconClose() {
   )
 }
 
-const TAG_INPUT_PLACEHOLDER = 'Nova tag…'
-
 function SidebarDropdownSection({
   id,
   title,
@@ -610,7 +555,7 @@ function SidebarDropdownSection({
 }
 
 function TabRow({
-  tab: t,
+  tab,
   simpleLayout,
   onRequestRemove,
   onRequestEditTitle,
@@ -622,7 +567,7 @@ function TabRow({
   onToggleFavorite,
   onRestore,
   tagsReadOnly = false,
-  removeLabel = 'Mover para a lixeira',
+  removeLabel,
 }: {
   tab: SavedTab
   simpleLayout: boolean
@@ -637,15 +582,17 @@ function TabRow({
   onToggleFavorite?: () => void
   onRestore?: () => void
   tagsReadOnly?: boolean
-  removeLabel?: string
+  removeLabel: string
 }) {
+  const { t, formatTabAddedAt } = useI18n()
+  const tagInputPlaceholder = t('tab.tag.placeholder')
   const tagDropdownId = useId()
   const tagPickerRef = useRef<HTMLSpanElement>(null)
   const [tagDraft, setTagDraft] = useState('')
 
   const selectableExistingTags = useMemo(
-    () => existingTagOptions.filter((tag) => !t.tags.includes(tag)),
-    [existingTagOptions, t.tags],
+    () => existingTagOptions.filter((tagName) => !tab.tags.includes(tagName)),
+    [existingTagOptions, tab.tags],
   )
   const hasTagSuggestions = selectableExistingTags.length > 0
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
@@ -676,17 +623,17 @@ function TabRow({
     const raw = tagDraft
     setTagDraft('')
     setTagDropdownOpen(false)
-    const next = mergeNewTags(t.tags, raw)
-    if (JSON.stringify(next) !== JSON.stringify(t.tags)) onSetTags(next)
+    const next = mergeNewTags(tab.tags, raw)
+    if (JSON.stringify(next) !== JSON.stringify(tab.tags)) onSetTags(next)
   }
 
-  function addExistingTag(tag: string) {
-    const next = mergeNewTags(t.tags, tag)
-    if (JSON.stringify(next) !== JSON.stringify(t.tags)) onSetTags(next)
+  function addExistingTag(tagName: string) {
+    const next = mergeNewTags(tab.tags, tagName)
+    if (JSON.stringify(next) !== JSON.stringify(tab.tags)) onSetTags(next)
     setTagDropdownOpen(false)
   }
 
-  const hostLabel = formatTabHostLabel(t.url, simpleLayout)
+  const hostLabel = formatTabHostLabel(tab.url, simpleLayout)
 
   function openTab() {
     onOpenTab()
@@ -698,7 +645,7 @@ function TabRow({
       8,
       tagDraft.length > 0
         ? tagDraft.length + 1
-        : TAG_INPUT_PLACEHOLDER.length,
+        : tagInputPlaceholder.length,
     ),
   )
 
@@ -718,7 +665,7 @@ function TabRow({
         >
           <img
             className="tab-favicon"
-            src={faviconUrl(t.url)}
+            src={faviconUrl(tab.url)}
             alt=""
             width={simpleLayout ? 20 : 32}
             height={simpleLayout ? 20 : 32}
@@ -727,10 +674,10 @@ function TabRow({
           <div className="tab-text">
             <div className="tab-title-row">
               <div
-                className={`tab-title${t.viewed ? ' tab-title--viewed' : ''}`}
-                title={t.title}
+                className={`tab-title${tab.viewed ? ' tab-title--viewed' : ''}`}
+                title={tab.title}
               >
-                {t.title}
+                {tab.title}
               </div>
               {simpleLayout ? (
                 <>
@@ -739,17 +686,17 @@ function TabRow({
                   </span>
                   <time
                     className="tab-added tab-added--inline"
-                    dateTime={t.addedAt}
+                    dateTime={tab.addedAt}
                   >
-                    {formatTabAddedAt(t.addedAt)}
+                    {formatTabAddedAt(tab.addedAt)}
                   </time>
                 </>
               ) : null}
               <button
                 type="button"
                 className="tab-title-edit"
-                aria-label={`Editar título de ${t.title}`}
-                title="Editar título"
+                aria-label={t('tab.title.editAria', { title: tab.title })}
+                title={t('tab.title.edit')}
                 onClick={(e) => {
                   e.stopPropagation()
                   onRequestEditTitle()
@@ -759,53 +706,53 @@ function TabRow({
               </button>
               <button
                 type="button"
-                className={`tab-title-edit tab-title-viewed-toggle${t.viewed ? ' tab-title-viewed-toggle--viewed' : ''}`}
+                className={`tab-title-edit tab-title-viewed-toggle${tab.viewed ? ' tab-title-viewed-toggle--viewed' : ''}`}
                 aria-label={
-                  t.viewed
-                    ? `Desmarcar ${t.title} como visualizado`
-                    : `Marcar ${t.title} como visualizado`
+                  tab.viewed
+                    ? t('tab.viewed.unmarkAria', { title: tab.title })
+                    : t('tab.viewed.markAria', { title: tab.title })
                 }
                 title={
-                  t.viewed
-                    ? 'Desmarcar como visualizado'
-                    : 'Marcar como visualizado'
+                  tab.viewed
+                    ? t('tab.viewed.unmark')
+                    : t('tab.viewed.mark')
                 }
                 onClick={(e) => {
                   e.stopPropagation()
                   onToggleViewed()
                 }}
               >
-                {t.viewed ? <IconEyeOff /> : <IconEye />}
+                {tab.viewed ? <IconEyeOff /> : <IconEye />}
               </button>
             </div>
             {!simpleLayout ? (
               <div className="tab-subline">
-                <span className="tab-host" title={t.url}>
+                <span className="tab-host" title={tab.url}>
                   {hostLabel}
                 </span>
                 <span className="tab-subline-sep" aria-hidden>
                   ·
                 </span>
-                <time className="tab-added" dateTime={t.addedAt}>
-                  {formatTabAddedAt(t.addedAt)}
+                <time className="tab-added" dateTime={tab.addedAt}>
+                  {formatTabAddedAt(tab.addedAt)}
                 </time>
               </div>
             ) : null}
           </div>
         </div>
         <div className="tab-row-tags-field">
-          {t.tags.map((tag) => (
-            <span key={tag} className="tab-chip">
-              {tag}
+          {tab.tags.map((tagName) => (
+            <span key={tagName} className="tab-chip">
+              {tagName}
               {!tagsReadOnly ? (
                 <button
                   type="button"
                   className="tab-chip-remove"
-                  aria-label={`Remover tag ${tag}`}
-                  title={`Remover tag ${tag}`}
+                  aria-label={t('tab.tag.remove', { tag: tagName })}
+                  title={t('tab.tag.remove', { tag: tagName })}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onSetTags(t.tags.filter((x) => x !== tag))
+                    onSetTags(tab.tags.filter((x) => x !== tagName))
                   }}
                 >
                   ×
@@ -842,8 +789,8 @@ function TabRow({
                 commitTagDraft()
               }}
               onClick={(e) => e.stopPropagation()}
-              placeholder={TAG_INPUT_PLACEHOLDER}
-              aria-label="Nova tag"
+              placeholder={tagInputPlaceholder}
+              aria-label={t('tab.tag.ariaLabel')}
               maxLength={64}
             />
             {hasTagSuggestions ? (
@@ -851,8 +798,8 @@ function TabRow({
                 <button
                   type="button"
                   className="tab-tag-dropdown-trigger"
-                  aria-label="Mostrar tags existentes"
-                  title="Mostrar tags existentes"
+                  aria-label={t('tab.tag.showExisting')}
+                  title={t('tab.tag.showExisting')}
                   aria-haspopup="listbox"
                   aria-expanded={tagDropdownOpen}
                   aria-controls={tagDropdownId}
@@ -868,7 +815,7 @@ function TabRow({
                   id={tagDropdownId}
                   className={`tab-tag-dropdown${tagDropdownOpen ? ' tab-tag-dropdown--open' : ''}`}
                   role="listbox"
-                  aria-label="Tags existentes"
+                  aria-label={t('tab.tag.existingList')}
                 >
                   {selectableExistingTags.map((tag) => (
                     <button
@@ -896,8 +843,8 @@ function TabRow({
           <button
             type="button"
             className="tab-row-restore"
-            aria-label="Restaurar"
-            title="Restaurar"
+            aria-label={t('tab.restore')}
+            title={t('tab.restore')}
             onClick={(e) => {
               e.stopPropagation()
               onRestore()
@@ -909,19 +856,19 @@ function TabRow({
         {showFavorite && onToggleFavorite ? (
           <button
             type="button"
-            className={`tab-row-favorite${t.favorite ? ' tab-row-favorite--on' : ''}`}
+            className={`tab-row-favorite${tab.favorite ? ' tab-row-favorite--on' : ''}`}
             aria-label={
-              t.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'
+              tab.favorite ? t('tab.favorite.remove') : t('tab.favorite.add')
             }
             title={
-              t.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'
+              tab.favorite ? t('tab.favorite.remove') : t('tab.favorite.add')
             }
             onClick={(e) => {
               e.stopPropagation()
               onToggleFavorite()
             }}
           >
-            <IconStar filled={t.favorite === true} />
+            <IconStar filled={tab.favorite === true} />
           </button>
         ) : null}
         <button
@@ -974,23 +921,7 @@ type PendingImportTrashResolution = PendingGroupsImport & {
 
 const GROUPS_EXPORT_VERSION = 1
 
-function formatTabCount(count: number): string {
-  return `${count} aba${count === 1 ? '' : 's'}`
-}
-
 const MAIN_VIEWS = ['saved', 'favorites', 'trash'] as const satisfies readonly MainView[]
-
-const MAIN_VIEW_LABELS: Record<MainView, string> = {
-  saved: 'Abas Salvas',
-  favorites: 'Favoritos',
-  trash: 'Lixeira',
-}
-
-const MAIN_VIEW_SHORT_LABELS: Record<MainView, string> = {
-  saved: 'Salvas',
-  favorites: 'Favoritos',
-  trash: 'Lixeira',
-}
 
 function MainViewTabIcon({ view }: { view: MainView }) {
   if (view === 'saved') {
@@ -1015,7 +946,42 @@ type AppProps = {
   initialPrefs?: UserPreferences
 }
 
-function App({ initialPrefs }: AppProps = {}) {
+export default function App({ initialPrefs }: AppProps = {}) {
+  const [locale, setLocale] = useState<SupportedLocale>(
+    () => initialPrefs?.locale ?? 'pt-BR',
+  )
+  return (
+    <I18nProvider locale={locale}>
+      <AppInner
+        initialPrefs={initialPrefs}
+        locale={locale}
+        setLocale={setLocale}
+      />
+    </I18nProvider>
+  )
+}
+
+function AppInner({
+  initialPrefs,
+  locale,
+  setLocale,
+}: {
+  initialPrefs?: UserPreferences
+  locale: SupportedLocale
+  setLocale: (l: SupportedLocale) => void
+}) {
+  const {
+    t,
+    plural,
+    formatTabCount,
+    formatShortDate,
+    formatCalendarDate,
+    formatGroupMetaLine,
+    formatRelativeAgo,
+    dateFnsLocale,
+    intlLocale,
+  } = useI18n()
+
   const [groups, setGroups] = useState<TabGroup[]>([])
   const [trash, setTrash] = useState<TrashedEntry[]>([])
   const [mainView, setMainView] = useState<MainView>('saved')
@@ -1129,84 +1095,80 @@ function App({ initialPrefs }: AppProps = {}) {
     switch (confirmAction?.variant) {
       case 'all':
         return {
-          title: 'Mover para a lixeira?',
-          body:
-            'Escolha o que deseja mover. Você poderá restaurar depois.',
-          confirmLabel: 'Mover para a lixeira',
+          title: t('confirm.moveAll.title'),
+          body: t('confirm.moveAll.body'),
+          confirmLabel: t('confirm.moveAll.confirmLabel'),
         }
       case 'group': {
         const group = groups.find((g) => g.id === confirmAction.groupId)
         if (!group) {
           return {
-            title: 'Mover grupo para a lixeira?',
-            body: 'Escolha quais abas mover. Você poderá restaurar depois.',
-            confirmLabel: 'Mover para a lixeira',
+            title: t('confirm.moveGroup.title'),
+            body: t('confirm.moveGroup.body.default'),
+            confirmLabel: t('confirm.moveGroup.confirmLabel'),
           }
         }
         const favoriteCount = countGroupFavoriteTabs(group)
         const viewedNonFavoriteCount = countGroupViewedNonFavoriteTabs(group)
         const parts = [
-          `Este grupo tem ${formatTabCount(group.tabs.length)}.`,
+          t('confirm.moveGroup.body.hasTabs', {
+            tabCount: formatTabCount(group.tabs.length),
+          }),
         ]
         if (favoriteCount > 0) {
           parts.push(
-            favoriteCount === 1
-              ? '1 favorita será perguntada individualmente ao mover todos.'
-              : `${favoriteCount} favoritas serão perguntadas uma a uma ao mover todos.`,
+            plural('confirm.moveGroup.body.favoritePrompt', favoriteCount, {
+              count: favoriteCount,
+            }),
           )
         }
         if (viewedNonFavoriteCount > 0) {
           parts.push(
-            viewedNonFavoriteCount === 1
-              ? '1 aba vista (não favorita) pode ser movida separadamente.'
-              : `${viewedNonFavoriteCount} abas vistas (não favoritas) podem ser movidas separadamente.`,
+            plural(
+              'confirm.moveGroup.body.viewedNonFavorite',
+              viewedNonFavoriteCount,
+              { count: viewedNonFavoriteCount },
+            ),
           )
         }
         return {
-          title: 'Mover grupo para a lixeira?',
+          title: t('confirm.moveGroup.title'),
           body: parts.join(' '),
-          confirmLabel: 'Mover para a lixeira',
+          confirmLabel: t('confirm.moveGroup.confirmLabel'),
         }
       }
       case 'tab':
         return {
-          title: 'Mover aba para a lixeira?',
-          body:
-            'A aba sairá da lista salva e ficará na lixeira até você restaurar ou apagar de vez.',
-          confirmLabel: 'Mover para a lixeira',
+          title: t('confirm.moveTab.title'),
+          body: t('confirm.moveTab.body'),
+          confirmLabel: t('confirm.moveTab.confirmLabel'),
         }
       case 'trash-entry':
         return {
-          title: 'Apagar permanentemente?',
-          body:
-            'Este item será removido da lixeira e não poderá ser recuperado.',
-          confirmLabel: 'Apagar permanentemente',
+          title: t('confirm.trashEntry.title'),
+          body: t('confirm.trashEntry.body'),
+          confirmLabel: t('confirm.trashEntry.confirmLabel'),
         }
       case 'trash-all':
         return {
-          title: 'Esvaziar lixeira?',
-          body:
-            'Todos os itens da lixeira serão apagados permanentemente. Esta ação não pode ser desfeita.',
-          confirmLabel: 'Esvaziar lixeira',
+          title: t('confirm.trashAll.title'),
+          body: t('confirm.trashAll.body'),
+          confirmLabel: t('confirm.trashAll.confirmLabel'),
         }
       case 'remove-duplicates': {
         const n = countDuplicateTabs(groups)
         return {
-          title: 'Remover abas duplicadas?',
-          body:
-            n === 1
-              ? 'Esta aba será movida para a lixeira.'
-              : `Estas ${n} abas serão movidas para a lixeira.`,
-          confirmLabel: 'Remover duplicadas',
+          title: t('confirm.removeDuplicates.title'),
+          body: plural('confirm.removeDuplicates.body', n, { count: n }),
+          confirmLabel: t('confirm.removeDuplicates.confirmLabel'),
         }
       }
       case 'prune-by-date': {
         if (!pruneBeforeDate) {
           return {
-            title: 'Limpar por período?',
-            body:
-              'Escolha uma data abaixo para ver quais abas serão movidas para a lixeira.',
-            confirmLabel: 'Continuar',
+            title: t('confirm.pruneByDate.title'),
+            body: t('confirm.pruneByDate.body.pickDate'),
+            confirmLabel: t('confirm.pruneByDate.confirmLabel'),
           }
         }
 
@@ -1218,42 +1180,45 @@ function App({ initialPrefs }: AppProps = {}) {
         const total = autoMove.length + favoritePrompt.length
         if (total === 0) {
           return {
-            title: 'Limpar por período?',
-            body: `Nenhuma aba salva até ${dateLabel}. Escolha outra data abaixo.`,
-            confirmLabel: 'Continuar',
+            title: t('confirm.pruneByDate.title'),
+            body: t('confirm.pruneByDate.body.noneUntil', { dateLabel }),
+            confirmLabel: t('confirm.pruneByDate.confirmLabel'),
           }
         }
 
-        const parts: string[] = []
+        const details: string[] = []
         if (autoMove.length > 0) {
-          parts.push(
-            autoMove.length === 1
-              ? '1 aba será movida para a lixeira.'
-              : `${autoMove.length} abas serão movidas para a lixeira.`,
+          details.push(
+            plural('confirm.pruneByDate.body.autoMove', autoMove.length, {
+              count: autoMove.length,
+            }),
           )
         }
         if (favoritePrompt.length > 0) {
-          parts.push(
-            favoritePrompt.length === 1
-              ? '1 favorita será perguntada individualmente.'
-              : `${favoritePrompt.length} favoritas serão perguntadas uma a uma.`,
+          details.push(
+            plural('confirm.pruneByDate.body.favoritePrompt', favoritePrompt.length, {
+              count: favoritePrompt.length,
+            }),
           )
         }
 
         return {
-          title: 'Limpar por período?',
-          body: `Abas salvas até ${dateLabel}. ${parts.join(' ')}`,
-          confirmLabel: 'Continuar',
+          title: t('confirm.pruneByDate.title'),
+          body: t('confirm.pruneByDate.body.summary', {
+            dateLabel,
+            details: details.join(' '),
+          }),
+          confirmLabel: t('confirm.pruneByDate.confirmLabel'),
         }
       }
       default:
         return {
           title: '',
           body: '',
-          confirmLabel: 'Confirmar',
+          confirmLabel: t('confirm.common.confirm'),
         }
     }
-  }, [confirmAction, groups, pruneBeforeDate])
+  }, [confirmAction, groups, pruneBeforeDate, t, plural, formatTabCount, formatCalendarDate])
 
   type GroupsPersistInput =
     | TabGroup[]
@@ -1369,11 +1334,12 @@ function App({ initialPrefs }: AppProps = {}) {
       }
       setDarkMode(prefs.theme === 'dark')
       setSimpleLayout(prefs.simpleLayout)
+      setLocale(prefs.locale)
       setSearch(prefs.search)
       setActiveTagFilters(prefs.activeTagFilters)
       setGroupDateRange(parseDateRange(prefs.groupDateRange))
     },
-    [],
+    [setLocale],
   )
 
   useEffect(() => {
@@ -1405,13 +1371,14 @@ function App({ initialPrefs }: AppProps = {}) {
     const prefs: UserPreferences = {
       theme: darkMode ? 'dark' : 'light',
       simpleLayout,
+      locale,
       search,
       activeTagFilters,
       groupDateRange: serializeDateRange(groupDateRange),
     }
 
     void saveLocalPreferencesFromLocal(prefs)
-  }, [darkMode, simpleLayout, search, activeTagFilters, groupDateRange])
+  }, [darkMode, simpleLayout, locale, search, activeTagFilters, groupDateRange])
 
   useEffect(() => {
     groupsRef.current = groups
@@ -1589,15 +1556,20 @@ function App({ initialPrefs }: AppProps = {}) {
     const moved = stats.autoMoved + stats.favoriteMoved
     if (moved === 0) {
       if (stats.favoriteKept === 0) return ''
-      return `${stats.favoriteKept} favorita${stats.favoriteKept === 1 ? '' : 's'} mantida${stats.favoriteKept === 1 ? '' : 's'} (salvas até ${dateLabel}).`
+      return plural('status.pruneFavoriteKept', stats.favoriteKept, {
+        count: stats.favoriteKept,
+        dateLabel,
+      })
     }
 
     const parts = [
-      `${moved} aba${moved === 1 ? '' : 's'} movida${moved === 1 ? '' : 's'} para a lixeira (salvas até ${dateLabel})`,
+      plural('status.pruneMoved', moved, { count: moved, dateLabel }),
     ]
     if (stats.favoriteKept > 0) {
       parts.push(
-        `${stats.favoriteKept} favorita${stats.favoriteKept === 1 ? '' : 's'} mantida${stats.favoriteKept === 1 ? '' : 's'}`,
+        plural('status.pruneFavoriteKeptSuffix', stats.favoriteKept, {
+          count: stats.favoriteKept,
+        }),
       )
     }
     return `${parts.join('; ')}.`
@@ -1710,7 +1682,7 @@ function App({ initialPrefs }: AppProps = {}) {
     const group = groups.find((g) => g.id === groupId)
     if (!group) return
     const title =
-      group.customTitle ?? formatGroupPrimary(new Date(group.savedAt))
+      group.customTitle ?? formatShortDate(new Date(group.savedAt))
     setEditTitleAction({ variant: 'group', groupId, title })
     setEditTitleDraft(title)
     setEditTitleModalMounted(true)
@@ -1778,8 +1750,8 @@ function App({ initialPrefs }: AppProps = {}) {
     }
     return [...map.entries()]
       .map(([tag, count]) => ({ tag, count }))
-      .sort((a, b) => a.tag.localeCompare(b.tag, 'pt-BR'))
-  }, [groups])
+      .sort((a, b) => a.tag.localeCompare(b.tag, intlLocale))
+  }, [groups, intlLocale])
 
   const viewedByDayMap = useMemo(
     () => buildDayViewedStatsByLocalDay(groups),
@@ -1900,14 +1872,14 @@ function App({ initialPrefs }: AppProps = {}) {
   function dedupeEntryGroupLabel(entry: DuplicateRemovalEntry): string {
     return (
       entry.groupCustomTitle ??
-      formatGroupPrimary(new Date(entry.groupSavedAt))
+      formatShortDate(new Date(entry.groupSavedAt))
     )
   }
 
   function pruneEntryGroupLabel(entry: PrunableTabEntry): string {
     return (
       entry.groupCustomTitle ??
-      formatGroupPrimary(new Date(entry.groupSavedAt))
+      formatShortDate(new Date(entry.groupSavedAt))
     )
   }
 
@@ -2000,7 +1972,7 @@ function App({ initialPrefs }: AppProps = {}) {
     a.download = `onetab-manager-grupos-${stamp}.json`
     a.click()
     URL.revokeObjectURL(url)
-    setGroupsImportStatus('Exportação gerada.')
+    setGroupsImportStatus(t('status.exportGenerated'))
   }
 
   function requestCloseImportModal() {
@@ -2051,7 +2023,10 @@ function App({ initialPrefs }: AppProps = {}) {
     )
     finishGroupsImport(
       applyImportReplace(groupsToImport),
-      `Lista substituída — ${groupsToImport.length} grupo${groupsToImport.length === 1 ? '' : 's'}, ${formatTabCount(importedTabCount)}.`,
+      t('status.importReplace', {
+        groupCount: groupsToImport.length,
+        tabCount: formatTabCount(importedTabCount),
+      }),
     )
   }
 
@@ -2061,14 +2036,14 @@ function App({ initialPrefs }: AppProps = {}) {
       next.reduce((total, group) => total + group.tabs.length, 0) -
       groupsRef.current.reduce((total, group) => total + group.tabs.length, 0)
     if (addedCount === 0) {
-      setGroupsImportStatus('Nenhuma aba nova foi adicionada.')
+      setGroupsImportStatus(t('status.importNoNewTabs'))
       requestCloseImportModal()
       requestCloseImportTrashModal()
       return
     }
     finishGroupsImport(
       next,
-      `${addedCount} link${addedCount === 1 ? '' : 's'} novo${addedCount === 1 ? '' : 's'} adicionado${addedCount === 1 ? '' : 's'}.`,
+      plural('plural.linkAdded', addedCount, { count: addedCount }),
     )
   }
 
@@ -2133,7 +2108,7 @@ function App({ initialPrefs }: AppProps = {}) {
       const importedGroups = parseGroupsFromExportPayload(parsed)
 
       if (importedGroups.length === 0) {
-        setGroupsImportStatus('Nenhum grupo válido encontrado no arquivo.')
+        setGroupsImportStatus(t('status.importNoValidGroups'))
         return
       }
 
@@ -2141,7 +2116,7 @@ function App({ initialPrefs }: AppProps = {}) {
       setPendingImport({ groups: importedGroups, preview })
       setImportModalMounted(true)
     } catch {
-      setGroupsImportStatus('Não foi possível importar este arquivo.')
+      setGroupsImportStatus(t('status.importFailed'))
     }
   }
 
@@ -2236,7 +2211,12 @@ function App({ initialPrefs }: AppProps = {}) {
       persistTrash([...trashEntries, ...trash])
       persist(next)
       setGroupsImportStatus(
-        `${removedCount} duplicada${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira (mantida a mais ${keep === 'newest' ? 'recente' : 'antiga'}).`,
+        plural('status.duplicateRemoved', removedCount, {
+          count: removedCount,
+          keepStrategy: t(
+            `status.duplicateRemoved.keepStrategy.${keep === 'newest' ? 'newest' : 'oldest'}`,
+          ),
+        }),
       )
     }
     requestCloseConfirmModal()
@@ -2292,7 +2272,7 @@ function App({ initialPrefs }: AppProps = {}) {
       persistTrash([...trashEntries, ...trash])
       persist(next)
       setGroupsImportStatus(
-        `${removedCount} aba${removedCount === 1 ? '' : 's'} vista${removedCount === 1 ? '' : 's'} movida${removedCount === 1 ? '' : 's'} para a lixeira.`,
+        plural('status.viewedMoved', removedCount, { count: removedCount }),
       )
     }
     requestCloseConfirmModal()
@@ -2396,14 +2376,18 @@ function App({ initialPrefs }: AppProps = {}) {
         <div className="mobile-header-brand">
           <IconLogo />
           <div>
-            <div className="mobile-header-title">OneTab Manager</div>
-            <div className="mobile-header-sub">GERENCIADOR DE ABAS</div>
+            <div className="mobile-header-title">{t('app.brandTitle')}</div>
+            <div className="mobile-header-sub">{t('app.brandSub')}</div>
           </div>
         </div>
         <button
           type="button"
           className="mobile-menu-btn"
-          aria-label={mobileSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+          aria-label={
+            mobileSidebarOpen
+              ? t('mobile.menu.close')
+              : t('mobile.menu.open')
+          }
           aria-expanded={mobileSidebarOpen}
           aria-controls="app-sidebar"
           onClick={() => setMobileSidebarOpen((open) => !open)}
@@ -2414,7 +2398,7 @@ function App({ initialPrefs }: AppProps = {}) {
       <button
         type="button"
         className={`sidebar-scrim${mobileSidebarOpen ? ' sidebar-scrim--open' : ''}`}
-        aria-label="Fechar menu"
+        aria-label={t('mobile.menu.close')}
         onClick={() => setMobileSidebarOpen(false)}
       />
       <aside
@@ -2425,8 +2409,8 @@ function App({ initialPrefs }: AppProps = {}) {
         <header className="sidebar-brand">
           <IconLogo />
           <div>
-            <div className="brand-title">OneTab Manager</div>
-            <div className="brand-sub">GERENCIADOR DE ABAS</div>
+            <div className="brand-title">{t('app.brandTitle')}</div>
+            <div className="brand-sub">{t('app.brandSub')}</div>
           </div>
         </header>
 
@@ -2435,7 +2419,7 @@ function App({ initialPrefs }: AppProps = {}) {
           <input
             className="search-input"
             type="search"
-            placeholder="Buscar por título, URL ou tag…"
+            placeholder={t('search.placeholder')}
             value={search}
             onChange={(e) => {
               markLocalPreferencesEdit()
@@ -2451,14 +2435,14 @@ function App({ initialPrefs }: AppProps = {}) {
               {mainView === 'trash' ? visibleTrash.length : visible.length}
             </div>
             <div className="stat-label">
-              {mainView === 'trash' ? 'itens' : 'grupos'}
+              {mainView === 'trash' ? t('stats.items') : t('stats.groups')}
             </div>
           </div>
           <div className="stat-card">
             <div className="stat-value">
               {mainView === 'trash' ? trashTabCount : visibleTabs}
             </div>
-            <div className="stat-label">abas</div>
+            <div className="stat-label">{t('stats.tabs')}</div>
           </div>
         </div>
 
@@ -2470,7 +2454,7 @@ function App({ initialPrefs }: AppProps = {}) {
               markLocalPreferencesEdit()
               setGroupDateRange(range)
             }}
-            locale={ptBR}
+            locale={dateFnsLocale}
             weekStartsOn={1}
             showOutsideDays
             fixedWeeks
@@ -2487,16 +2471,16 @@ function App({ initialPrefs }: AppProps = {}) {
                   setGroupDateRange(undefined)
                 }}
               >
-                Limpar
+                {t('calendar.clear')}
               </button>
             </div>
           ) : null}
         </div>
 
-        <section className="sidebar-preferences" aria-label="Preferências">
+        <section className="sidebar-preferences" aria-label={t('preferences.ariaLabel')}>
           <SidebarDropdownSection
             id="appearance"
-            title="Aparência"
+            title={t('preferences.appearance.title')}
             open={preferenceSectionsOpen.appearance}
             onToggle={() => togglePreferenceSection('appearance')}
           >
@@ -2505,7 +2489,7 @@ function App({ initialPrefs }: AppProps = {}) {
                   className="sidebar-toggle-row-label"
                   id="theme-switch-label"
                 >
-                  Modo escuro
+                  {t('preferences.appearance.darkMode')}
                 </span>
                 <button
                   ref={themeSwitchRef}
@@ -2532,7 +2516,7 @@ function App({ initialPrefs }: AppProps = {}) {
                   className="sidebar-toggle-row-label"
                   id="compact-mode-switch-label"
                 >
-                  Modo compacto
+                  {t('preferences.appearance.compactMode')}
                 </span>
                 <button
                   type="button"
@@ -2548,11 +2532,37 @@ function App({ initialPrefs }: AppProps = {}) {
                   <span className="theme-switch__knob" aria-hidden />
                 </button>
               </div>
+              <div className="sidebar-section-divider" role="separator" aria-hidden />
+              <div className="sidebar-locale-field">
+                <label className="sidebar-locale-label" htmlFor="locale-select">
+                  {t('preferences.appearance.language')}
+                </label>
+                <div className="sidebar-locale-select-wrap">
+                  <select
+                    id="locale-select"
+                    className="sidebar-locale-select"
+                    value={locale}
+                    onChange={(e) => {
+                      markLocalPreferencesEdit()
+                      setLocale(e.target.value as SupportedLocale)
+                    }}
+                  >
+                    {SUPPORTED_LOCALES.map((l) => (
+                      <option key={l} value={l}>
+                        {t(`locale.${l}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="sidebar-locale-select-chevron" aria-hidden>
+                    <IconChevron open={false} />
+                  </span>
+                </div>
+              </div>
           </SidebarDropdownSection>
 
           <SidebarDropdownSection
             id="backup"
-            title="Backup"
+            title={t('preferences.backup.title')}
             open={preferenceSectionsOpen.backup}
             onToggle={() => togglePreferenceSection('backup')}
           >
@@ -2568,10 +2578,10 @@ function App({ initialPrefs }: AppProps = {}) {
                   </span>
                   <span className="sidebar-action-row-body">
                     <span className="sidebar-action-row-label">
-                      Exportar grupos
+                      {t('preferences.backup.export.label')}
                     </span>
                     <span className="sidebar-action-row-hint">
-                      Salvar arquivo JSON no dispositivo
+                      {t('preferences.backup.export.hint')}
                     </span>
                   </span>
                 </button>
@@ -2590,10 +2600,10 @@ function App({ initialPrefs }: AppProps = {}) {
                   </span>
                   <span className="sidebar-action-row-body">
                     <span className="sidebar-action-row-label">
-                      Importar grupos
+                      {t('preferences.backup.import.label')}
                     </span>
                     <span className="sidebar-action-row-hint">
-                      Carregar grupos de um arquivo JSON
+                      {t('preferences.backup.import.hint')}
                     </span>
                   </span>
                 </button>
@@ -2612,7 +2622,7 @@ function App({ initialPrefs }: AppProps = {}) {
 
           <SidebarDropdownSection
             id="exclusion"
-            title="Exclusão"
+            title={t('preferences.exclusion.title')}
             open={preferenceSectionsOpen.exclusion}
             onToggle={() => togglePreferenceSection('exclusion')}
           >
@@ -2627,13 +2637,13 @@ function App({ initialPrefs }: AppProps = {}) {
                   <IconDedupe />
                 </span>
                 <span className="sidebar-action-row-body">
-                  <span className="sidebar-action-row-label">Remover duplicadas</span>
+                  <span className="sidebar-action-row-label">
+                    {t('preferences.exclusion.removeDuplicates.label')}
+                  </span>
                   <span className="sidebar-action-row-hint">
-                    {duplicateTabCount === 0
-                      ? 'Nenhuma URL repetida'
-                      : duplicateTabCount === 1
-                        ? '1 aba com URL repetida'
-                        : `${duplicateTabCount} abas com URL repetida`}
+                    {plural('misc.duplicateUrl', duplicateTabCount, {
+                      count: duplicateTabCount,
+                    })}
                   </span>
                 </span>
               </button>
@@ -2648,9 +2658,11 @@ function App({ initialPrefs }: AppProps = {}) {
                   <IconCalendarPeriod />
                 </span>
                 <span className="sidebar-action-row-body">
-                  <span className="sidebar-action-row-label">Limpar por período</span>
+                  <span className="sidebar-action-row-label">
+                    {t('preferences.exclusion.pruneByDate.label')}
+                  </span>
                   <span className="sidebar-action-row-hint">
-                    Mover abas salvas até uma data para a lixeira
+                    {t('preferences.exclusion.pruneByDate.hint')}
                   </span>
                 </span>
               </button>
@@ -2669,10 +2681,10 @@ function App({ initialPrefs }: AppProps = {}) {
                 </span>
                 <span className="sidebar-action-row-body">
                   <span className="sidebar-action-row-label">
-                    Mover para a lixeira
+                    {t('preferences.exclusion.moveToTrash.label')}
                   </span>
                   <span className="sidebar-action-row-hint">
-                    Tudo ou apenas abas já vistas
+                    {t('preferences.exclusion.moveToTrash.hint')}
                   </span>
                 </span>
               </button>
@@ -2681,21 +2693,19 @@ function App({ initialPrefs }: AppProps = {}) {
         </section>
 
         <p className="sidebar-hint">
-          Clique no ícone da extensão para salvar a aba atual. Botão direito no
-          ícone → <strong>Abrir lista de abas salvas</strong>.
+          {t('sidebar.hint.saveTab')}{' '}
+          <strong>{t('sidebar.hint.openList')}</strong>.
         </p>
         </div>
 
-        <footer className="sidebar-footer" aria-label="Armazenamento local">
-          <p className="sidebar-hint">
-            Dados salvos apenas neste navegador.
-          </p>
+        <footer className="sidebar-footer" aria-label={t('sidebar.footer.ariaLabel')}>
+          <p className="sidebar-hint">{t('sidebar.footer.localOnly')}</p>
         </footer>
       </aside>
 
       <main className={`main${simpleLayout ? ' main--simple' : ''}`}>
         <div className="main-tabs-wrap">
-          <nav className="main-tabs" role="tablist" aria-label="Seções">
+          <nav className="main-tabs" role="tablist" aria-label={t('mainView.ariaLabel')}>
             <div className="main-tabs-slider" aria-hidden>
               <div
                 className="main-tabs-slider-rect"
@@ -2725,10 +2735,10 @@ function App({ initialPrefs }: AppProps = {}) {
                     ) : null}
                   </span>
                   <span className="main-tab-label main-tab-label--long">
-                    {MAIN_VIEW_LABELS[view]}
+                    {t(`mainView.${view}`)}
                   </span>
                   <span className="main-tab-label main-tab-label--short">
-                    {MAIN_VIEW_SHORT_LABELS[view]}
+                    {t(`mainView.${view}Short`)}
                   </span>
                 </button>
               ))}
@@ -2744,7 +2754,7 @@ function App({ initialPrefs }: AppProps = {}) {
               onClick={() => openConfirmDeleteModal({ variant: 'trash-all' })}
             >
               <IconTrash />
-              Esvaziar lixeira
+              {t('trash.emptyAll')}
             </button>
           </div>
         ) : null}
@@ -2752,10 +2762,10 @@ function App({ initialPrefs }: AppProps = {}) {
         {mainView !== 'trash' && tagIndex.length > 0 ? (
           <section
             className="tag-filter-bar"
-            aria-label="Filtrar listagem por tags"
+            aria-label={t('tagFilter.ariaLabel')}
           >
             <div className="tag-filter-bar-head">
-              <span className="tag-filter-title">Filtrar por tag</span>
+              <span className="tag-filter-title">{t('tagFilter.title')}</span>
               {activeTagFilters.length > 0 ? (
                 <button
                   type="button"
@@ -2765,7 +2775,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     setActiveTagFilters([])
                   }}
                 >
-                  Limpar filtros
+                  {t('tagFilter.clear')}
                 </button>
               ) : null}
             </div>
@@ -2795,8 +2805,13 @@ function App({ initialPrefs }: AppProps = {}) {
             </div>
             {activeTagFilters.length > 1 ? (
               <p className="tag-filter-hint">
-                Mostrando abas que tenham{' '}
-                <strong>qualquer uma</strong> das tags selecionadas.
+                {t('tagFilter.multiTagHint').split(
+                  t('tagFilter.multiTagHint.emphasis'),
+                )[0]}
+                <strong>{t('tagFilter.multiTagHint.emphasis')}</strong>
+                {t('tagFilter.multiTagHint').split(
+                  t('tagFilter.multiTagHint.emphasis'),
+                )[1]}
               </p>
             ) : null}
           </section>
@@ -2807,8 +2822,8 @@ function App({ initialPrefs }: AppProps = {}) {
             visibleTrash.length === 0 ? (
               <div className="empty-state">
                 {trash.length === 0
-                  ? 'A lixeira está vazia. Itens excluídos aparecerão aqui para você restaurar ou apagar de vez.'
-                  : 'Nenhum resultado na lixeira para essa busca.'}
+                  ? t('trash.empty')
+                  : t('trash.emptySearch')}
               </div>
             ) : (
               visibleTrashByDay.map((day) => {
@@ -2817,7 +2832,7 @@ function App({ initialPrefs }: AppProps = {}) {
                 const deleted = trashDayLatestDeletedAt(day)
                 const groupTitle =
                   day.customTitle ??
-                  formatGroupPrimary(new Date(day.savedAt))
+                  formatShortDate(new Date(day.savedAt))
                 return (
                   <article
                     key={day.dayKey}
@@ -2828,7 +2843,9 @@ function App({ initialPrefs }: AppProps = {}) {
                         type="button"
                         className="group-header-lead"
                         id={`trash-header-${day.dayKey}`}
-                        title={expanded ? 'Recolher' : 'Expandir'}
+                        title={
+                          expanded ? t('trash.collapse') : t('trash.expand')
+                        }
                         onClick={() => toggleTrashDayExpanded(day.dayKey)}
                         aria-expanded={expanded}
                         aria-controls={`trash-panel-${day.dayKey}`}
@@ -2844,8 +2861,10 @@ function App({ initialPrefs }: AppProps = {}) {
                       <div className="group-header-meta">
                         <IconClock />
                         <span>
-                          Excluído {formatRelativeAgo(deleted)} ·{' '}
-                          {tabCount === 1 ? '1 aba' : `${tabCount} abas`}
+                          {t('trash.deletedMeta', {
+                            relativeAgo: formatRelativeAgo(deleted),
+                            tabCount: formatTabCount(tabCount),
+                          })}
                         </span>
                       </div>
                       <span className="group-badge">{tabCount}</span>
@@ -2853,8 +2872,8 @@ function App({ initialPrefs }: AppProps = {}) {
                         <button
                           type="button"
                           className="group-tool-btn"
-                          aria-label="Restaurar todas as abas do dia"
-                          title="Restaurar todas as abas do dia"
+                          aria-label={t('trash.restoreDay')}
+                          title={t('trash.restoreDay')}
                           onClick={(e) => {
                             e.stopPropagation()
                             restoreTrashDay(day.dayKey)
@@ -2876,14 +2895,14 @@ function App({ initialPrefs }: AppProps = {}) {
                       >
                         <div className="group-body">
                           {day.entries.map((entry) =>
-                            entry.group.tabs.map((t) => (
+                            entry.group.tabs.map((tab) => (
                               <TabRow
-                                key={`${entry.id}-${t.id}`}
-                                tab={t}
+                                key={`${entry.id}-${tab.id}`}
+                                tab={tab}
                                 simpleLayout={simpleLayout}
                                 existingTagOptions={[]}
                                 tagsReadOnly
-                                removeLabel="Apagar permanentemente"
+                                removeLabel={t('tab.remove.deletePermanent')}
                                 onRequestRemove={() =>
                                   openConfirmDeleteModal({
                                     variant: 'trash-entry',
@@ -2895,26 +2914,26 @@ function App({ initialPrefs }: AppProps = {}) {
                                   openEditTabTitleModal({
                                     variant: 'tab',
                                     groupId: entry.restore.groupId,
-                                    tabId: t.id,
-                                    title: t.title,
+                                    tabId: tab.id,
+                                    title: tab.title,
                                   })
                                 }
                                 onOpenTab={() =>
                                   void handleOpenSavedTab(
                                     entry.restore.groupId,
-                                    t.id,
-                                    t.url,
-                                    t.viewed === true,
+                                    tab.id,
+                                    tab.url,
+                                    tab.viewed === true,
                                   )
                                 }
                                 onToggleViewed={() =>
                                   setTabViewed(
                                     entry.restore.groupId,
-                                    t.id,
-                                    !t.viewed,
+                                    tab.id,
+                                    !tab.viewed,
                                   )
                                 }
-                                onRestore={() => restoreTabFromTrash(entry.id, t.id)}
+                                onRestore={() => restoreTabFromTrash(entry.id, tab.id)}
                               />
                             )),
                           )}
@@ -2929,17 +2948,17 @@ function App({ initialPrefs }: AppProps = {}) {
             <div className="empty-state">
               {mainView === 'favorites'
                 ? favoriteGroups.length === 0
-                  ? 'Nenhuma aba favorita. Toque na estrela em uma aba salva para adicionar aos favoritos.'
+                  ? t('empty.favorites.none')
                   : search.trim() !== '' || activeTagFilters.length > 0
-                    ? 'Nenhum favorito para essa busca ou filtro de tags.'
-                    : 'Nenhum resultado.'
+                    ? t('empty.favorites.noResults')
+                    : t('empty.generic')
                 : groups.length === 0
-                  ? 'Nenhuma aba salva ainda. Clique no ícone da extensão na barra de ferramentas para salvar a aba em foco.'
+                  ? t('empty.saved.none')
                   : search.trim() !== '' ||
                       activeTagFilters.length > 0 ||
                       groupDateRange?.from
-                    ? 'Nenhum resultado para essa busca, tags ou intervalo de datas.'
-                    : 'Nenhum resultado.'}
+                    ? t('empty.saved.noResults')
+                    : t('empty.generic')}
             </div>
           ) : (
             visible.map((g) => {
@@ -2952,13 +2971,17 @@ function App({ initialPrefs }: AppProps = {}) {
                   <div className="group-header">
                     {(() => {
                       const groupTitle =
-                        g.customTitle ?? formatGroupPrimary(saved)
+                        g.customTitle ?? formatShortDate(saved)
                       return (
                     <button
                       type="button"
                       className="group-header-lead"
                       id={`group-header-${g.id}`}
-                      title={g.expanded ? 'Recolher grupo' : 'Expandir grupo'}
+                      title={
+                        g.expanded
+                          ? t('group.collapse')
+                          : t('group.expand')
+                      }
                       onClick={() => toggleExpanded(g.id)}
                       aria-expanded={g.expanded}
                       aria-controls={`group-panel-${g.id}`}
@@ -2983,9 +3006,9 @@ function App({ initialPrefs }: AppProps = {}) {
                         type="button"
                         className="group-tool-btn"
                         aria-label={
-                          g.pinned ? 'Desfixar grupo' : 'Fixar grupo'
+                          g.pinned ? t('group.unpin') : t('group.pin')
                         }
-                        title={g.pinned ? 'Desfixar grupo' : 'Fixar grupo'}
+                        title={g.pinned ? t('group.unpin') : t('group.pin')}
                         onClick={(e) => {
                           e.stopPropagation()
                           togglePin(g.id)
@@ -2996,8 +3019,8 @@ function App({ initialPrefs }: AppProps = {}) {
                       <button
                         type="button"
                         className="group-tool-btn"
-                        aria-label="Abrir abas não vistas do grupo"
-                        title="Abrir abas não vistas do grupo"
+                        aria-label={t('group.openUnviewed')}
+                        title={t('group.openUnviewed')}
                         onClick={(e) => {
                           e.stopPropagation()
                           void openGroupTabs(g.id, g.tabs)
@@ -3008,8 +3031,8 @@ function App({ initialPrefs }: AppProps = {}) {
                       <button
                         type="button"
                         className="group-tool-btn"
-                        aria-label="Editar nome do grupo"
-                        title="Editar nome do grupo"
+                        aria-label={t('group.editName')}
+                        title={t('group.editName')}
                         onClick={(e) => {
                           e.stopPropagation()
                           openEditGroupTitleModal(g.id)
@@ -3020,8 +3043,8 @@ function App({ initialPrefs }: AppProps = {}) {
                       <button
                         type="button"
                         className="group-tool-btn group-tool-btn--danger"
-                        aria-label="Mover grupo para a lixeira"
-                        title="Mover grupo para a lixeira"
+                        aria-label={t('group.moveToTrash')}
+                        title={t('group.moveToTrash')}
                         onClick={(e) => {
                           e.stopPropagation()
                           openConfirmDeleteModal({
@@ -3045,42 +3068,43 @@ function App({ initialPrefs }: AppProps = {}) {
                       inert={!g.expanded}
                     >
                       <div className="group-body">
-                        {g.tabs.map((t) => (
+                        {g.tabs.map((tab) => (
                           <TabRow
-                            key={t.id}
-                            tab={t}
+                            key={tab.id}
+                            tab={tab}
                             simpleLayout={simpleLayout}
                             existingTagOptions={tagIndex.map((x) => x.tag)}
+                            removeLabel={t('tab.remove.moveToTrash')}
                             onRequestRemove={() =>
                               openConfirmDeleteModal({
                                 variant: 'tab',
                                 groupId: g.id,
-                                tabId: t.id,
+                                tabId: tab.id,
                               })
                             }
-                            onSetTags={(tags) => setTabTags(g.id, t.id, tags)}
+                            onSetTags={(tags) => setTabTags(g.id, tab.id, tags)}
                             onRequestEditTitle={() =>
                               openEditTabTitleModal({
                                 variant: 'tab',
                                 groupId: g.id,
-                                tabId: t.id,
-                                title: t.title,
+                                tabId: tab.id,
+                                title: tab.title,
                               })
                             }
                             onOpenTab={() =>
                               void handleOpenSavedTab(
                                 g.id,
-                                t.id,
-                                t.url,
-                                t.viewed === true,
+                                tab.id,
+                                tab.url,
+                                tab.viewed === true,
                               )
                             }
                             onToggleViewed={() =>
-                              setTabViewed(g.id, t.id, !t.viewed)
+                              setTabViewed(g.id, tab.id, !tab.viewed)
                             }
                             showFavorite
                             onToggleFavorite={() =>
-                              toggleTabFavorite(g.id, t.id)
+                              toggleTabFavorite(g.id, tab.id)
                             }
                           />
                         ))}
@@ -3117,17 +3141,19 @@ function App({ initialPrefs }: AppProps = {}) {
               >
                 <h2 id="edit-title-modal-title" className="modal-title">
                   {editTitleAction.variant === 'group'
-                    ? 'Editar nome do grupo'
-                    : 'Editar título do site'}
+                    ? t('editTitle.group.title')
+                    : t('editTitle.tab.title')}
                 </h2>
                 <p id="edit-title-modal-desc" className="modal-body">
                   {editTitleAction.variant === 'group'
-                    ? 'Dê um nome personalizado ao grupo. Deixe em branco para voltar a usar a data do salvamento.'
-                    : 'Altere como este site aparece na sua lista de abas salvas.'}
+                    ? t('editTitle.group.body')
+                    : t('editTitle.tab.body')}
                 </p>
                 <label className="modal-field">
                   <span className="modal-field-label">
-                    {editTitleAction.variant === 'group' ? 'Nome' : 'Título'}
+                    {editTitleAction.variant === 'group'
+                      ? t('editTitle.group.fieldLabel')
+                      : t('editTitle.tab.fieldLabel')}
                   </span>
                   <input
                     ref={editTitleInputRef}
@@ -3144,7 +3170,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseEditTitleModal}
                   >
-                    Cancelar
+                    {t('editTitle.cancel')}
                   </button>
                   <button
                     type="submit"
@@ -3154,7 +3180,7 @@ function App({ initialPrefs }: AppProps = {}) {
                       editTitleDraft.trim().length === 0
                     }
                   >
-                    Salvar
+                    {t('editTitle.save')}
                   </button>
                 </div>
               </form>
@@ -3180,10 +3206,10 @@ function App({ initialPrefs }: AppProps = {}) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <h2 id="redirect-modal-title" className="modal-title">
-                  Aba já aberta
+                  {t('redirect.title')}
                 </h2>
                 <p id="redirect-modal-desc" className="modal-body">
-                  Essa aba já está aberta. Deseja ser redirecionado para ela?
+                  {t('redirect.body')}
                 </p>
                 <div className="modal-actions">
                   <button
@@ -3191,14 +3217,14 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseRedirectModal}
                   >
-                    Cancelar
+                    {t('redirect.cancel')}
                   </button>
                   <button
                     type="button"
                     className="btn btn-primary modal-btn"
                     onClick={() => void confirmRedirectToOpenTab()}
                   >
-                    Ir para a aba
+                    {t('redirect.confirm')}
                   </button>
                 </div>
               </div>
@@ -3224,15 +3250,17 @@ function App({ initialPrefs }: AppProps = {}) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <h2 id="favorite-prune-modal-title" className="modal-title">
-                  Mover favorito para a lixeira?
+                  {t('favoritePrune.title')}
                 </h2>
                 <p id="favorite-prune-modal-desc" className="modal-body">
-                  Esta aba está marcada como favorita. Deseja movê-la para a
-                  lixeira mesmo assim?
+                  {t('favoritePrune.body')}
                   {favoritePruneQueue.length > 1 ? (
                     <>
                       {' '}
-                      ({favoritePruneIndex + 1} de {favoritePruneQueue.length})
+                      {t('favoritePrune.progress', {
+                        current: favoritePruneIndex + 1,
+                        total: favoritePruneQueue.length,
+                      })}
                     </>
                   ) : null}
                 </p>
@@ -3265,7 +3293,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={() => answerFavoritePrune(false)}
                   >
-                    Manter favorito
+                    {t('favoritePrune.keep')}
                   </button>
                   <button
                     type="button"
@@ -3273,7 +3301,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     onClick={() => answerFavoritePrune(true)}
                   >
                     <IconTrash />
-                    Mover para a lixeira
+                    {t('favoritePrune.moveToTrash')}
                   </button>
                 </div>
               </div>
@@ -3309,7 +3337,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     <div
                       className="dedupe-keep-toggle"
                       role="group"
-                      aria-label="Qual cópia manter em cada URL"
+                      aria-label={t('confirm.removeDuplicates.keepStrategy.ariaLabel')}
                     >
                       <button
                         type="button"
@@ -3317,7 +3345,7 @@ function App({ initialPrefs }: AppProps = {}) {
                         aria-pressed={dedupeKeepStrategy === 'newest'}
                         onClick={() => setDedupeKeepStrategy('newest')}
                       >
-                        Manter a mais recente
+                        {t('confirm.removeDuplicates.keepStrategy.newest')}
                       </button>
                       <button
                         type="button"
@@ -3325,10 +3353,13 @@ function App({ initialPrefs }: AppProps = {}) {
                         aria-pressed={dedupeKeepStrategy === 'oldest'}
                         onClick={() => setDedupeKeepStrategy('oldest')}
                       >
-                        Manter a mais antiga
+                        {t('confirm.removeDuplicates.keepStrategy.oldest')}
                       </button>
                     </div>
-                    <ul className="dedupe-preview-list" aria-label="Abas duplicadas">
+                    <ul
+                      className="dedupe-preview-list"
+                      aria-label={t('confirm.removeDuplicates.preview.ariaLabel')}
+                    >
                       {duplicateRemovalPreview.map((entry) => (
                         <li key={entry.tab.id} className="dedupe-preview-item">
                           <button
@@ -3375,7 +3406,7 @@ function App({ initialPrefs }: AppProps = {}) {
                   <div
                     className="import-choice-list"
                     role="group"
-                    aria-label="O que mover do grupo para a lixeira"
+                    aria-label={t('confirm.moveGroup.ariaLabel')}
                   >
                     <button
                       type="button"
@@ -3385,13 +3416,32 @@ function App({ initialPrefs }: AppProps = {}) {
                         executeMoveGroupToTrash(confirmAction.groupId, 'all')
                       }
                     >
-                      <span className="import-choice-btn__title">Mover todos</span>
+                      <span className="import-choice-btn__title">
+                        {t('confirm.moveGroup.choice.moveAll.title')}
+                      </span>
                       <span className="import-choice-btn__hint">
                         {groupTrashTarget.group.tabs.length === 0
-                          ? 'Nenhuma aba neste grupo.'
+                          ? t('confirm.moveGroup.choice.moveAll.hint.empty')
                           : groupTrashTarget.allFavoriteCount === 0
-                            ? `${formatTabCount(groupTrashTarget.group.tabs.length)} ser${groupTrashTarget.group.tabs.length === 1 ? 'á' : 'ão'} movida${groupTrashTarget.group.tabs.length === 1 ? '' : 's'} para a lixeira.`
-                            : `${formatTabCount(groupTrashTarget.allAutoCount)} ser${groupTrashTarget.allAutoCount === 1 ? 'á' : 'ão'} movida${groupTrashTarget.allAutoCount === 1 ? '' : 's'} agora; ${formatTabCount(groupTrashTarget.allFavoriteCount)} favorita${groupTrashTarget.allFavoriteCount === 1 ? '' : 's'} ${groupTrashTarget.allFavoriteCount === 1 ? 'será perguntada' : 'serão perguntadas'} uma a uma.`}
+                            ? plural(
+                                'confirm.moveGroup.choice.moveAll.hint.noFavorites',
+                                groupTrashTarget.group.tabs.length,
+                                {
+                                  tabCount: formatTabCount(
+                                    groupTrashTarget.group.tabs.length,
+                                  ),
+                                },
+                              )
+                            : plural(
+                                'confirm.moveGroup.choice.moveAll.hint.withFavorites',
+                                groupTrashTarget.allAutoCount,
+                                {
+                                  autoCount: formatTabCount(
+                                    groupTrashTarget.allAutoCount,
+                                  ),
+                                  favoriteCount: groupTrashTarget.allFavoriteCount,
+                                },
+                              )}
                       </span>
                     </button>
                     <button
@@ -3406,12 +3456,20 @@ function App({ initialPrefs }: AppProps = {}) {
                       }
                     >
                       <span className="import-choice-btn__title">
-                        Mover apenas vistas
+                        {t('confirm.moveGroup.choice.moveViewed.title')}
                       </span>
                       <span className="import-choice-btn__hint">
                         {groupTrashTarget.viewedCount === 0
-                          ? 'Nenhuma aba vista (exceto favoritos) neste grupo.'
-                          : `${formatTabCount(groupTrashTarget.viewedCount)} vista${groupTrashTarget.viewedCount === 1 ? '' : 's'} ser${groupTrashTarget.viewedCount === 1 ? 'á' : 'ão'} movida${groupTrashTarget.viewedCount === 1 ? '' : 's'}; favoritos e não vistas permanecem.`}
+                          ? t('confirm.moveGroup.choice.moveViewed.hint.zero')
+                          : plural(
+                              'confirm.moveGroup.choice.moveViewed.hint',
+                              groupTrashTarget.viewedCount,
+                              {
+                                tabCount: formatTabCount(
+                                  groupTrashTarget.viewedCount,
+                                ),
+                              },
+                            )}
                       </span>
                     </button>
                   </div>
@@ -3420,7 +3478,7 @@ function App({ initialPrefs }: AppProps = {}) {
                   <div
                     className="import-choice-list"
                     role="group"
-                    aria-label="O que mover para a lixeira"
+                    aria-label={t('confirm.moveAll.ariaLabel')}
                   >
                     <button
                       type="button"
@@ -3428,14 +3486,15 @@ function App({ initialPrefs }: AppProps = {}) {
                       onClick={executeConfirmDelete}
                     >
                       <span className="import-choice-btn__title">
-                        Mover tudo
+                        {t('confirm.moveAll.choice.moveAll.title')}
                       </span>
                       <span className="import-choice-btn__hint">
                         {groups.length === 0
-                          ? 'Nenhum grupo salvo.'
-                          : groups.length === 1
-                            ? `1 grupo com ${formatTabCount(savedTabCount)} será movido para a lixeira.`
-                            : `${groups.length} grupos com ${formatTabCount(savedTabCount)} serão movidos para a lixeira.`}
+                          ? t('confirm.moveAll.choice.moveAll.hint.zero')
+                          : plural('confirm.moveAll.choice.moveAll.hint', groups.length, {
+                              groupCount: groups.length,
+                              tabCount: formatTabCount(savedTabCount),
+                            })}
                       </span>
                     </button>
                     <button
@@ -3445,12 +3504,16 @@ function App({ initialPrefs }: AppProps = {}) {
                       onClick={executeMoveViewedToTrash}
                     >
                       <span className="import-choice-btn__title">
-                        Mover apenas vistas
+                        {t('confirm.moveAll.choice.moveViewed.title')}
                       </span>
                       <span className="import-choice-btn__hint">
                         {viewedTabCount === 0
-                          ? 'Nenhuma aba marcada como vista.'
-                          : `${formatTabCount(viewedTabCount)} ser${viewedTabCount === 1 ? 'á' : 'ão'} movida${viewedTabCount === 1 ? '' : 's'}; abas não vistas permanecem.`}
+                          ? t('confirm.moveAll.choice.moveViewed.hint.zero')
+                          : plural(
+                              'confirm.moveAll.choice.moveViewed.hint',
+                              viewedTabCount,
+                              { tabCount: formatTabCount(viewedTabCount) },
+                            )}
                       </span>
                     </button>
                   </div>
@@ -3459,7 +3522,7 @@ function App({ initialPrefs }: AppProps = {}) {
                   <>
                     <div className="modal-field modal-field--prune-date">
                       <ModalDatePicker
-                        label="Mover abas salvas até"
+                        label={t('confirm.pruneByDate.dateLabel')}
                         value={pruneBeforeDate}
                         maxDate={new Date()}
                         onChange={setPruneBeforeDate}
@@ -3468,7 +3531,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     {pruneByDatePreview.length > 0 ? (
                       <ul
                         className="dedupe-preview-list"
-                        aria-label="Abas que serão movidas"
+                        aria-label={t('confirm.pruneByDate.preview.ariaLabel')}
                       >
                         {pruneByDatePreview.map((entry) => (
                           <li key={entry.tab.id} className="dedupe-preview-item">
@@ -3507,7 +3570,7 @@ function App({ initialPrefs }: AppProps = {}) {
                                   {isTabFavorite(entry.tab) ? (
                                     <>
                                       <span aria-hidden> · </span>
-                                      Favorito — será perguntado
+                                      {t('confirm.pruneByDate.preview.favoriteNote')}
                                     </>
                                   ) : null}
                                 </span>
@@ -3525,7 +3588,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseConfirmModal}
                   >
-                    Cancelar
+                    {t('confirm.common.cancel')}
                   </button>
                   {confirmAction.variant === 'remove-duplicates' ? (
                     <button
@@ -3536,7 +3599,7 @@ function App({ initialPrefs }: AppProps = {}) {
                       }
                     >
                       <IconDedupe />
-                      Remover duplicadas
+                      {t('confirm.removeDuplicates.confirmLabel')}
                     </button>
                   ) : confirmAction.variant === 'prune-by-date' ? (
                     <button
@@ -3546,7 +3609,7 @@ function App({ initialPrefs }: AppProps = {}) {
                       onClick={executePruneByDate}
                     >
                       <IconCalendarPeriod />
-                      Continuar
+                      {t('confirm.pruneByDate.confirmLabel')}
                     </button>
                   ) : confirmAction.variant === 'all' ||
                     confirmAction.variant === 'group' ? null : (
@@ -3582,31 +3645,30 @@ function App({ initialPrefs }: AppProps = {}) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <h2 id="import-modal-title" className="modal-title">
-                  Como importar este backup?
+                  {t('import.title')}
                 </h2>
                 <p id="import-modal-desc" className="modal-body">
-                  {pendingImport.preview.currentTabCount === 0 ? (
-                    <>
-                      O arquivo traz {pendingImport.preview.importedGroupCount}{' '}
-                      grupo
-                      {pendingImport.preview.importedGroupCount === 1 ? '' : 's'}{' '}
-                      com {formatTabCount(pendingImport.preview.importedTabCount)}.
-                    </>
-                  ) : (
-                    <>
-                      O backup tem {pendingImport.preview.importedGroupCount}{' '}
-                      grupo
-                      {pendingImport.preview.importedGroupCount === 1 ? '' : 's'}{' '}
-                      ({formatTabCount(pendingImport.preview.importedTabCount)}). Você
-                      tem {formatTabCount(pendingImport.preview.currentTabCount)} salvas
-                      agora.
-                    </>
-                  )}
+                  {pendingImport.preview.currentTabCount === 0
+                    ? t('import.body.emptyCurrent', {
+                        groupCount: pendingImport.preview.importedGroupCount,
+                        tabCount: formatTabCount(
+                          pendingImport.preview.importedTabCount,
+                        ),
+                      })
+                    : t('import.body.withCurrent', {
+                        groupCount: pendingImport.preview.importedGroupCount,
+                        importedTabCount: formatTabCount(
+                          pendingImport.preview.importedTabCount,
+                        ),
+                        currentTabCount: formatTabCount(
+                          pendingImport.preview.currentTabCount,
+                        ),
+                      })}
                 </p>
                 <div
                   className="import-choice-list"
                   role="group"
-                  aria-label="Modo de importação"
+                  aria-label={t('import.ariaLabel')}
                 >
                   <button
                     type="button"
@@ -3615,16 +3677,29 @@ function App({ initialPrefs }: AppProps = {}) {
                     onClick={executeImportAddMissing}
                   >
                     <span className="import-choice-btn__title">
-                      Manter e completar
+                      {t('import.choice.addMissing.title')}
                     </span>
                     <span className="import-choice-btn__hint">
                       {pendingImport.preview.newTabCount === 0
-                        ? 'Todos os links do arquivo já estão na sua lista.'
-                        : `Adiciona ${formatTabCount(pendingImport.preview.newTabCount)} que ainda não estão salvas${
-                            pendingImport.preview.duplicateTabCount > 0
-                              ? `; ${formatTabCount(pendingImport.preview.duplicateTabCount)} repetida${pendingImport.preview.duplicateTabCount === 1 ? '' : 's'} ${pendingImport.preview.duplicateTabCount === 1 ? 'é ignorada' : 'são ignoradas'}.`
-                              : '.'
-                          }`}
+                        ? t('import.choice.addMissing.hint.allExist')
+                        : pendingImport.preview.duplicateTabCount > 0
+                          ? plural(
+                              'import.choice.addMissing.hint.addNewWithDuplicates',
+                              pendingImport.preview.duplicateTabCount,
+                              {
+                                newTabCount: formatTabCount(
+                                  pendingImport.preview.newTabCount,
+                                ),
+                                duplicateTabCount: formatTabCount(
+                                  pendingImport.preview.duplicateTabCount,
+                                ),
+                              },
+                            )
+                          : t('import.choice.addMissing.hint.addNew', {
+                              newTabCount: formatTabCount(
+                                pendingImport.preview.newTabCount,
+                              ),
+                            })}
                     </span>
                   </button>
                   <button
@@ -3632,10 +3707,11 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="import-choice-btn import-choice-btn--danger"
                     onClick={executeImportReplace}
                   >
-                    <span className="import-choice-btn__title">Substituir tudo</span>
+                    <span className="import-choice-btn__title">
+                      {t('import.choice.replace.title')}
+                    </span>
                     <span className="import-choice-btn__hint">
-                      Apaga a lista atual e usa somente o conteúdo do arquivo. Esta
-                      ação não pode ser desfeita automaticamente.
+                      {t('import.choice.replace.hint')}
                     </span>
                   </button>
                 </div>
@@ -3645,7 +3721,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseImportModal}
                   >
-                    Cancelar
+                    {t('import.cancel')}
                   </button>
                 </div>
               </div>
@@ -3671,18 +3747,17 @@ function App({ initialPrefs }: AppProps = {}) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <h2 id="import-trash-modal-title" className="modal-title">
-                  Abas do arquivo importado estão na lixeira
+                  {t('importTrash.title')}
                 </h2>
                 <p id="import-trash-modal-desc" className="modal-body">
-                  {formatTabCount(pendingImportTrash.overlapCount)} do arquivo
-                  importado {pendingImportTrash.overlapCount === 1 ? 'está' : 'estão'}{' '}
-                  na lixeira. Deseja mantê-las na lixeira ou restaurar para a lista
-                  salva?
+                  {plural('importTrash.body', pendingImportTrash.overlapCount, {
+                    tabCount: formatTabCount(pendingImportTrash.overlapCount),
+                  })}
                 </p>
                 <div
                   className="import-choice-list"
                   role="group"
-                  aria-label="Abas na lixeira"
+                  aria-label={t('importTrash.ariaLabel')}
                 >
                   <button
                     type="button"
@@ -3690,10 +3765,10 @@ function App({ initialPrefs }: AppProps = {}) {
                     onClick={() => executeImportWithTrashChoice(true)}
                   >
                     <span className="import-choice-btn__title">
-                      Restaurar abas
+                      {t('importTrash.choice.restore.title')}
                     </span>
                     <span className="import-choice-btn__hint">
-                      Remove da lixeira e inclui na importação.
+                      {t('importTrash.choice.restore.hint')}
                     </span>
                   </button>
                   <button
@@ -3702,10 +3777,10 @@ function App({ initialPrefs }: AppProps = {}) {
                     onClick={() => executeImportWithTrashChoice(false)}
                   >
                     <span className="import-choice-btn__title">
-                      Manter na lixeira
+                      {t('importTrash.choice.keep.title')}
                     </span>
                     <span className="import-choice-btn__hint">
-                      Mantém na lixeira e não adiciona essas abas à lista salva.
+                      {t('importTrash.choice.keep.hint')}
                     </span>
                   </button>
                 </div>
@@ -3715,7 +3790,7 @@ function App({ initialPrefs }: AppProps = {}) {
                     className="btn btn-outline modal-btn"
                     onClick={requestCloseImportTrashModal}
                   >
-                    Cancelar
+                    {t('importTrash.cancel')}
                   </button>
                 </div>
               </div>
@@ -3728,4 +3803,3 @@ function App({ initialPrefs }: AppProps = {}) {
   )
 }
 
-export default App

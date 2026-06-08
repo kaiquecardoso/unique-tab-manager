@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "One Tab Manager"
+  },
+  "extDescription": {
+    "message": "Tabs mit einem Klick speichern und schließen. Gruppen nach Tag, Favoriten, Tags, Suche und Stapelversand."
+  },
+  "actionTitle": {
+    "message": "Aktuellen Tab in OneTab speichern"
+  }
+}
