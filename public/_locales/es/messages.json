@@ -1,11 +1,11 @@
 {
   "extName": {
-    "message": "One Tab Manager"
+    "message": "Unique Tab Manager"
   },
   "extDescription": {
     "message": "Guarde pestañas con un clic y ciérrelas. Grupos por día, favoritos, etiquetas, búsqueda y envío en lote."
   },
   "actionTitle": {
-    "message": "Guardar pestaña actual en OneTab"
+    "message": "Guardar pestaña actual en Unique Tab"
   }
 }

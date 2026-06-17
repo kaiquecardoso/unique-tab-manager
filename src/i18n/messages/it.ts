@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const it: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'GESTORE SCHEDE',
 
   'relativeTime.now': 'adesso',
@@ -261,11 +261,11 @@ export const it: Messages = {
   'duplicate.savedAt': 'Salvata il {date} alle {time}',
 
   'toast.savingLink': 'Salvataggio link',
-  'toast.linkSaved': 'Link salvato in OneTab',
+  'toast.linkSaved': 'Link salvato in Unique Tab',
   'toast.linkSaveFailed': 'Impossibile salvare il link',
   'toast.linkAlreadySaved': 'Link già salvato — mantenuta la versione salvata',
 
-  'context.openList': 'Apri One Tab Manager',
+  'context.openList': 'Apri Unique Tab Manager',
   'context.saveWindow': 'Invia tutte le schede di questa finestra',
   'context.saveTabGroup': 'Invia tutte le schede di questo gruppo',
   'context.saveSelected': 'Invia le schede selezionate',
@@ -275,12 +275,12 @@ export const it: Messages = {
   'context.saveLeft': 'Invia le schede a sinistra',
   'context.saveRight': 'Invia le schede a destra',
   'context.saveAllWindows': 'Invia tutte le schede di tutte le finestre',
-  'context.excludeSite': 'Escludi questo sito da One Tab Manager',
-  'context.allowSite': 'Consenti questo sito in One Tab Manager',
-  'context.saveLink': 'Salva link in One Tab Manager',
+  'context.excludeSite': 'Escludi questo sito da Unique Tab Manager',
+  'context.allowSite': 'Consenti questo sito in Unique Tab Manager',
+  'context.saveLink': 'Salva link in Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Salva in OneTab',
-  'livepix.saveLink': 'Salva link in OneTab',
+  'livepix.saveToOneTab': 'Salva in Unique Tab',
+  'livepix.saveLink': 'Salva link in Unique Tab',
   'livepix.noLink': 'Nessun link nel messaggio',
 
   'misc.noTitle': 'Senza titolo',
@@ -288,7 +288,7 @@ export const it: Messages = {
   'misc.duplicateUrl.one': '1 scheda con URL duplicato',
   'misc.duplicateUrl.other': '{count} schede con URL duplicato',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Salva schede con un clic e chiudile. Gruppi per giorno, preferiti, tag, ricerca e invio in blocco.',
-  'manifest.actionTitle': 'Salva scheda corrente in OneTab',
+  'manifest.actionTitle': 'Salva scheda corrente in Unique Tab',
 }

@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const en: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'TAB MANAGER',
 
   'relativeTime.now': 'now',
@@ -261,11 +261,11 @@ export const en: Messages = {
   'duplicate.savedAt': 'Saved on {date} at {time}',
 
   'toast.savingLink': 'Saving link',
-  'toast.linkSaved': 'Link saved to OneTab',
+  'toast.linkSaved': 'Link saved to Unique Tab',
   'toast.linkSaveFailed': 'Could not save link',
   'toast.linkAlreadySaved': 'Link already saved — kept saved version',
 
-  'context.openList': 'Open One Tab Manager',
+  'context.openList': 'Open Unique Tab Manager',
   'context.saveWindow': 'Send all tabs in this window',
   'context.saveTabGroup': 'Send all tabs in this tab group',
   'context.saveSelected': 'Send selected tabs',
@@ -275,12 +275,12 @@ export const en: Messages = {
   'context.saveLeft': 'Send tabs to the left',
   'context.saveRight': 'Send tabs to the right',
   'context.saveAllWindows': 'Send all tabs from all windows',
-  'context.excludeSite': 'Exclude this site from One Tab Manager',
-  'context.allowSite': 'Allow this site in One Tab Manager',
-  'context.saveLink': 'Save link to One Tab Manager',
+  'context.excludeSite': 'Exclude this site from Unique Tab Manager',
+  'context.allowSite': 'Allow this site in Unique Tab Manager',
+  'context.saveLink': 'Save link to Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Save to OneTab',
-  'livepix.saveLink': 'Save link to OneTab',
+  'livepix.saveToOneTab': 'Save to Unique Tab',
+  'livepix.saveLink': 'Save link to Unique Tab',
   'livepix.noLink': 'No link in message',
 
   'misc.noTitle': 'No title',
@@ -288,7 +288,7 @@ export const en: Messages = {
   'misc.duplicateUrl.one': '1 tab with duplicate URL',
   'misc.duplicateUrl.other': '{count} tabs with duplicate URL',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Save tabs with one click and close them. Groups by day, favorites, tags, search and batch send.',
-  'manifest.actionTitle': 'Save current tab to OneTab',
+  'manifest.actionTitle': 'Save current tab to Unique Tab',
 }

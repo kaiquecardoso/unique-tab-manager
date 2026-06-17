@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const ptBR: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'GERENCIADOR DE ABAS',
 
   'relativeTime.now': 'agora',
@@ -261,11 +261,11 @@ export const ptBR: Messages = {
   'duplicate.savedAt': 'Salva em {date} às {time}',
 
   'toast.savingLink': 'Salvando link',
-  'toast.linkSaved': 'Link salvo no OneTab',
+  'toast.linkSaved': 'Link salvo no Unique Tab',
   'toast.linkSaveFailed': 'Não foi possível salvar o link',
   'toast.linkAlreadySaved': 'Link já salvo — mantida a versão salva',
 
-  'context.openList': 'Abrir One Tab Manager',
+  'context.openList': 'Abrir Unique Tab Manager',
   'context.saveWindow': 'Enviar todas as guias desta janela',
   'context.saveTabGroup': 'Enviar todas as guias deste grupo de guias',
   'context.saveSelected': 'Enviar as guias selecionadas',
@@ -275,12 +275,12 @@ export const ptBR: Messages = {
   'context.saveLeft': 'Enviar as guias à esquerda',
   'context.saveRight': 'Enviar as guias à direita',
   'context.saveAllWindows': 'Enviar todas as guias de todas as janelas',
-  'context.excludeSite': 'Excluir este site do One Tab Manager',
-  'context.allowSite': 'Permitir este site no One Tab Manager',
-  'context.saveLink': 'Salvar link no One Tab Manager',
+  'context.excludeSite': 'Excluir este site do Unique Tab Manager',
+  'context.allowSite': 'Permitir este site no Unique Tab Manager',
+  'context.saveLink': 'Salvar link no Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Salvar no OneTab',
-  'livepix.saveLink': 'Salvar link no OneTab',
+  'livepix.saveToOneTab': 'Salvar no Unique Tab',
+  'livepix.saveLink': 'Salvar link no Unique Tab',
   'livepix.noLink': 'Nenhum link na mensagem',
 
   'misc.noTitle': 'Sem título',
@@ -288,7 +288,7 @@ export const ptBR: Messages = {
   'misc.duplicateUrl.one': '1 aba com URL repetida',
   'misc.duplicateUrl.other': '{count} abas com URL repetida',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Salve abas com um clique e feche as guias. Grupos por dia, favoritos, tags, busca e envio em lote.',
-  'manifest.actionTitle': 'Salvar aba atual no OneTab',
+  'manifest.actionTitle': 'Salvar aba atual no Unique Tab',
 }

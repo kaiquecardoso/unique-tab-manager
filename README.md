@@ -1,4 +1,4 @@
-# One Tab Manager
+# Unique Tab Manager
 
 Extensão para **Google Chrome** (Manifest V3) inspirada no conceito do OneTab: ao salvar uma aba, ela é **fechada no navegador** e guardada em uma lista local para você reabrir quando quiser, sem deixar dezenas de guias abertas.
 
@@ -8,11 +8,11 @@ Os dados ficam **apenas no seu navegador** (`chrome.storage.local`). Não há co
 
 | Tema claro — layout padrão | Tema claro — modo compacto |
 | :---: | :---: |
-| ![One Tab Manager — tema claro](src/assets/claro.png) | ![One Tab Manager — tema claro, modo compacto](src/assets/compactoclaro.png) |
+| ![Unique Tab Manager — tema claro](src/assets/claro.png) | ![Unique Tab Manager — tema claro, modo compacto](src/assets/compactoclaro.png) |
 
 | Tema escuro — layout padrão | Tema escuro — modo compacto |
 | :---: | :---: |
-| ![One Tab Manager — tema escuro](src/assets/escuro.png) | ![One Tab Manager — tema escuro, modo compacto](src/assets/compactoescuro.png) |
+| ![Unique Tab Manager — tema escuro](src/assets/escuro.png) | ![Unique Tab Manager — tema escuro, modo compacto](src/assets/compactoescuro.png) |
 
 ## Funcionalidades
 

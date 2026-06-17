@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const es: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'GESTOR DE PESTAÑAS',
 
   'relativeTime.now': 'ahora',
@@ -261,11 +261,11 @@ export const es: Messages = {
   'duplicate.savedAt': 'Guardada el {date} a las {time}',
 
   'toast.savingLink': 'Guardando enlace',
-  'toast.linkSaved': 'Enlace guardado en OneTab',
+  'toast.linkSaved': 'Enlace guardado en Unique Tab',
   'toast.linkSaveFailed': 'No fue posible guardar el enlace',
   'toast.linkAlreadySaved': 'Enlace ya guardado — se mantuvo la versión guardada',
 
-  'context.openList': 'Abrir One Tab Manager',
+  'context.openList': 'Abrir Unique Tab Manager',
   'context.saveWindow': 'Enviar todas las pestañas de esta ventana',
   'context.saveTabGroup': 'Enviar todas las pestañas de este grupo',
   'context.saveSelected': 'Enviar las pestañas seleccionadas',
@@ -275,12 +275,12 @@ export const es: Messages = {
   'context.saveLeft': 'Enviar las pestañas a la izquierda',
   'context.saveRight': 'Enviar las pestañas a la derecha',
   'context.saveAllWindows': 'Enviar todas las pestañas de todas las ventanas',
-  'context.excludeSite': 'Excluir este sitio de One Tab Manager',
-  'context.allowSite': 'Permitir este sitio en One Tab Manager',
-  'context.saveLink': 'Guardar enlace en One Tab Manager',
+  'context.excludeSite': 'Excluir este sitio de Unique Tab Manager',
+  'context.allowSite': 'Permitir este sitio en Unique Tab Manager',
+  'context.saveLink': 'Guardar enlace en Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Guardar en OneTab',
-  'livepix.saveLink': 'Guardar enlace en OneTab',
+  'livepix.saveToOneTab': 'Guardar en Unique Tab',
+  'livepix.saveLink': 'Guardar enlace en Unique Tab',
   'livepix.noLink': 'Ningún enlace en el mensaje',
 
   'misc.noTitle': 'Sin título',
@@ -288,7 +288,7 @@ export const es: Messages = {
   'misc.duplicateUrl.one': '1 pestaña con URL repetida',
   'misc.duplicateUrl.other': '{count} pestañas con URL repetida',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Guarde pestañas con un clic y ciérrelas. Grupos por día, favoritos, etiquetas, búsqueda y envío en lote.',
-  'manifest.actionTitle': 'Guardar pestaña actual en OneTab',
+  'manifest.actionTitle': 'Guardar pestaña actual en Unique Tab',
 }

@@ -1957,7 +1957,7 @@ function AppInner({
 
   function exportGroups() {
     const payload = {
-      app: 'OneTab Manager',
+      app: 'Unique Tab Manager',
       version: GROUPS_EXPORT_VERSION,
       exportedAt: new Date().toISOString(),
       groups,

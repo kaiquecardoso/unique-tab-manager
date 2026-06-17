@@ -1,11 +1,11 @@
 {
   "extName": {
-    "message": "One Tab Manager"
+    "message": "Unique Tab Manager"
   },
   "extDescription": {
     "message": "Enregistrez les onglets en un clic et fermez-les. Groupes par jour, favoris, tags, recherche et envoi en lot."
   },
   "actionTitle": {
-    "message": "Enregistrer l'onglet actuel dans OneTab"
+    "message": "Enregistrer l'onglet actuel dans Unique Tab"
   }
 }

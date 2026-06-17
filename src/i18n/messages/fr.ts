@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const fr: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'GESTIONNAIRE D\'ONGLETS',
 
   'relativeTime.now': 'maintenant',
@@ -261,11 +261,11 @@ export const fr: Messages = {
   'duplicate.savedAt': 'Enregistrée le {date} à {time}',
 
   'toast.savingLink': 'Enregistrement du lien',
-  'toast.linkSaved': 'Lien enregistré dans OneTab',
+  'toast.linkSaved': 'Lien enregistré dans Unique Tab',
   'toast.linkSaveFailed': 'Impossible d\'enregistrer le lien',
   'toast.linkAlreadySaved': 'Lien déjà enregistré — version enregistrée conservée',
 
-  'context.openList': 'Ouvrir One Tab Manager',
+  'context.openList': 'Ouvrir Unique Tab Manager',
   'context.saveWindow': 'Envoyer tous les onglets de cette fenêtre',
   'context.saveTabGroup': 'Envoyer tous les onglets de ce groupe',
   'context.saveSelected': 'Envoyer les onglets sélectionnés',
@@ -275,12 +275,12 @@ export const fr: Messages = {
   'context.saveLeft': 'Envoyer les onglets à gauche',
   'context.saveRight': 'Envoyer les onglets à droite',
   'context.saveAllWindows': 'Envoyer tous les onglets de toutes les fenêtres',
-  'context.excludeSite': 'Exclure ce site de One Tab Manager',
-  'context.allowSite': 'Autoriser ce site dans One Tab Manager',
-  'context.saveLink': 'Enregistrer le lien dans One Tab Manager',
+  'context.excludeSite': 'Exclure ce site de Unique Tab Manager',
+  'context.allowSite': 'Autoriser ce site dans Unique Tab Manager',
+  'context.saveLink': 'Enregistrer le lien dans Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Enregistrer dans OneTab',
-  'livepix.saveLink': 'Enregistrer le lien dans OneTab',
+  'livepix.saveToOneTab': 'Enregistrer dans Unique Tab',
+  'livepix.saveLink': 'Enregistrer le lien dans Unique Tab',
   'livepix.noLink': 'Aucun lien dans le message',
 
   'misc.noTitle': 'Sans titre',
@@ -288,7 +288,7 @@ export const fr: Messages = {
   'misc.duplicateUrl.one': '1 onglet avec URL en double',
   'misc.duplicateUrl.other': '{count} onglets avec URL en double',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Enregistrez les onglets en un clic et fermez-les. Groupes par jour, favoris, tags, recherche et envoi en lot.',
-  'manifest.actionTitle': 'Enregistrer l\'onglet actuel dans OneTab',
+  'manifest.actionTitle': 'Enregistrer l\'onglet actuel dans Unique Tab',
 }

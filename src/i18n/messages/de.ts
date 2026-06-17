@@ -1,7 +1,7 @@
 import type { Messages } from '../types'
 
 export const de: Messages = {
-  'app.brandTitle': 'OneTab Manager',
+  'app.brandTitle': 'Unique Tab Manager',
   'app.brandSub': 'TAB-VERWALTUNG',
 
   'relativeTime.now': 'jetzt',
@@ -261,11 +261,11 @@ export const de: Messages = {
   'duplicate.savedAt': 'Gespeichert am {date} um {time}',
 
   'toast.savingLink': 'Link wird gespeichert',
-  'toast.linkSaved': 'Link in OneTab gespeichert',
+  'toast.linkSaved': 'Link in Unique Tab gespeichert',
   'toast.linkSaveFailed': 'Link konnte nicht gespeichert werden',
   'toast.linkAlreadySaved': 'Link bereits gespeichert — gespeicherte Version behalten',
 
-  'context.openList': 'One Tab Manager öffnen',
+  'context.openList': 'Unique Tab Manager öffnen',
   'context.saveWindow': 'Alle Tabs dieses Fensters senden',
   'context.saveTabGroup': 'Alle Tabs dieser Tab-Gruppe senden',
   'context.saveSelected': 'Ausgewählte Tabs senden',
@@ -275,12 +275,12 @@ export const de: Messages = {
   'context.saveLeft': 'Tabs links senden',
   'context.saveRight': 'Tabs rechts senden',
   'context.saveAllWindows': 'Alle Tabs aller Fenster senden',
-  'context.excludeSite': 'Diese Website von One Tab Manager ausschließen',
-  'context.allowSite': 'Diese Website in One Tab Manager erlauben',
-  'context.saveLink': 'Link in One Tab Manager speichern',
+  'context.excludeSite': 'Diese Website von Unique Tab Manager ausschließen',
+  'context.allowSite': 'Diese Website in Unique Tab Manager erlauben',
+  'context.saveLink': 'Link in Unique Tab Manager speichern',
 
-  'livepix.saveToOneTab': 'In OneTab speichern',
-  'livepix.saveLink': 'Link in OneTab speichern',
+  'livepix.saveToOneTab': 'In Unique Tab speichern',
+  'livepix.saveLink': 'Link in Unique Tab speichern',
   'livepix.noLink': 'Kein Link in der Nachricht',
 
   'misc.noTitle': 'Kein Titel',
@@ -288,7 +288,7 @@ export const de: Messages = {
   'misc.duplicateUrl.one': '1 Tab mit doppelter URL',
   'misc.duplicateUrl.other': '{count} Tabs mit doppelter URL',
 
-  'manifest.name': 'One Tab Manager',
+  'manifest.name': 'Unique Tab Manager',
   'manifest.description': 'Tabs mit einem Klick speichern und schließen. Gruppen nach Tag, Favoriten, Tags, Suche und Stapelversand.',
-  'manifest.actionTitle': 'Aktuellen Tab in OneTab speichern',
+  'manifest.actionTitle': 'Aktuellen Tab in Unique Tab speichern',
 }
