@@ -6,8 +6,7 @@ import {
   DEFAULT_LOCALE,
   type SupportedLocale,
 } from './types'
-
-const PREFERENCES_STORAGE_KEY = 'oneTabPreferencesV1'
+import { PREFERENCES_STORAGE_KEY } from '../lib/storageKeys'
 
 type StoredPreferences = {
   locale?: string

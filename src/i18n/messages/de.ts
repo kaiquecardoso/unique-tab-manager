@@ -279,7 +279,7 @@ export const de: Messages = {
   'context.allowSite': 'Diese Website in Unique Tab Manager erlauben',
   'context.saveLink': 'Link in Unique Tab Manager speichern',
 
-  'livepix.saveToOneTab': 'In Unique Tab speichern',
+  'livepix.saveToUniqueTab': 'In Unique Tab speichern',
   'livepix.saveLink': 'Link in Unique Tab speichern',
   'livepix.noLink': 'Kein Link in der Nachricht',
 

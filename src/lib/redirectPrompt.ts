@@ -8,7 +8,7 @@ import { detectHostDarkMode } from './pageTheme'
  */
 export async function showRedirectPrompt(): Promise<boolean> {
   const locale = await loadStoredLocale()
-  const PROMPT_ID = 'one-tab-manager-redirect-prompt'
+  const PROMPT_ID = 'unique-tab-manager-redirect-prompt'
 
   const existing = document.getElementById(PROMPT_ID)
   if (existing) existing.remove()
@@ -22,7 +22,7 @@ export async function showRedirectPrompt(): Promise<boolean> {
 
     const host = document.createElement('div')
     host.id = PROMPT_ID
-    host.setAttribute('data-one-tab-manager', 'redirect-prompt')
+    host.setAttribute('data-unique-tab-manager', 'redirect-prompt')
     host.style.position = 'fixed'
     host.style.top = '0'
     host.style.left = '0'

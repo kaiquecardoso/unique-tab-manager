@@ -1,4 +1,4 @@
-export const TOAST_ID = 'one-tab-manager-toast'
+export const TOAST_ID = 'unique-tab-manager-toast'
 
 function normalizeToastTitle(title: string | undefined): string {
   return title?.replace(/\s+/g, ' ').trim() ?? ''
@@ -86,7 +86,7 @@ export function showPageToast(
     spinner.style.borderTopColor = isDarkMode ? '#f4f4f5' : '#18181b'
     spinner.style.borderRadius = '999px'
     spinner.style.flex = '0 0 auto'
-    spinner.style.animation = 'one-tab-manager-spin 720ms linear infinite'
+    spinner.style.animation = 'unique-tab-manager-spin 720ms linear infinite'
     title.appendChild(spinner)
   }
 
@@ -96,7 +96,7 @@ export function showPageToast(
 
   const style = document.createElement('style')
   style.textContent = `
-    @keyframes one-tab-manager-spin {
+    @keyframes unique-tab-manager-spin {
       to { transform: rotate(360deg); }
     }
   `

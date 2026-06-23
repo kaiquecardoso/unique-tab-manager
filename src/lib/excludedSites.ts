@@ -1,4 +1,6 @@
-export const EXCLUDED_SITES_STORAGE_KEY = 'oneTabExcludedSitesV1'
+import { EXCLUDED_SITES_STORAGE_KEY } from './storageKeys'
+
+export { EXCLUDED_SITES_STORAGE_KEY } from './storageKeys'
 
 export function hostnameFromUrl(url: string): string | null {
   try {

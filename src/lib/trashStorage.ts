@@ -1,6 +1,8 @@
 import type { TrashedEntry } from '../types/trash'
 import { normalizeAllGroups } from './groupsStorage'
-export const TRASH_STORAGE_KEY = 'oneTabTrashV1'
+import { TRASH_STORAGE_KEY } from './storageKeys'
+
+export { TRASH_STORAGE_KEY } from './storageKeys'
 
 function normalizeEntry(raw: TrashedEntry): TrashedEntry {
   const deletedAt =

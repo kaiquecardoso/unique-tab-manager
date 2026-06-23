@@ -22,7 +22,7 @@ export async function showDuplicatePrompt(
   options: DuplicatePromptOptions,
 ): Promise<DuplicateSaveChoice> {
   const locale = await loadStoredLocale()
-  const PROMPT_ID = 'one-tab-manager-duplicate-prompt'
+  const PROMPT_ID = 'unique-tab-manager-duplicate-prompt'
 
   function normalizeTitle(title: string | undefined): string {
     return title?.replace(/\s+/g, ' ').trim() ?? ''
@@ -55,7 +55,7 @@ export async function showDuplicatePrompt(
 
     const host = document.createElement('div')
     host.id = PROMPT_ID
-    host.setAttribute('data-one-tab-manager', 'duplicate-prompt')
+    host.setAttribute('data-unique-tab-manager', 'duplicate-prompt')
     host.style.position = 'fixed'
     host.style.top = '0'
     host.style.left = '0'

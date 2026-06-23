@@ -5,6 +5,7 @@ import {
 } from './lib/urlInText'
 import {
   KNOWN_LINK_ATTR,
+  UNIQUE_TAB_LINK_ATTR,
   refreshKnownLinkMarks,
   setLinkKnownState,
 } from './lib/markKnownLinks'
@@ -22,10 +23,10 @@ import saveButtonLogoUrl from './assets/logo.png'
 
 /** Integracao com paineis de doacao: LivePix e PixGG (adaptadores abaixo). */
 
-const PROCESSED_ATTR = 'data-one-tab-donation-save'
-const SAVE_BTN_ATTR = 'data-one-tab-save'
-const SAVE_WRAP_ATTR = 'data-one-tab-save-wrap'
-const STYLES_ID = 'one-tab-donation-panel-styles'
+const PROCESSED_ATTR = 'data-unique-tab-donation-save'
+const SAVE_BTN_ATTR = 'data-unique-tab-save'
+const SAVE_WRAP_ATTR = 'data-unique-tab-save-wrap'
+const STYLES_ID = 'unique-tab-donation-panel-styles'
 
 let cachedLocale: SupportedLocale | null = null
 
@@ -38,7 +39,7 @@ async function getLivepixLocale(): Promise<SupportedLocale> {
 
 function livepixLabels(locale: SupportedLocale) {
   return {
-    save: t(locale, 'livepix.saveToOneTab'),
+    save: t(locale, 'livepix.saveToUniqueTab'),
     saveLink: t(locale, 'livepix.saveLink'),
     noLink: t(locale, 'livepix.noLink'),
   }
@@ -169,7 +170,7 @@ function ensureDonationPanelStyles(): void {
       max-height: 40px;
     }
 
-    a[data-one-tab-link][${KNOWN_LINK_ATTR}] {
+    a[${UNIQUE_TAB_LINK_ATTR}][${KNOWN_LINK_ATTR}] {
       text-decoration: line-through underline !important;
       opacity: 0.72;
     }
@@ -293,15 +294,15 @@ function scanDonationItems(
 
 function registerLinkClickTracking(): void {
   const root = document.documentElement
-  if (root.dataset.oneTabLinkClicks === 'true') return
-  root.dataset.oneTabLinkClicks = 'true'
+  if (root.dataset.uniqueTabLinkClicks === 'true') return
+  root.dataset.uniqueTabLinkClicks = 'true'
 
   const markClickedLink = (url: string, anchor: HTMLAnchorElement): void => {
     void markLivepixLinkClicked(url)
     setLinkKnownState(anchor, true)
   }
 
-  async function navigateOneTabLink(
+  async function navigateUniqueTabLink(
     anchor: HTMLAnchorElement,
     active: boolean,
   ): Promise<void> {
@@ -341,7 +342,7 @@ function registerLinkClickTracking(): void {
     'mousedown',
     (event) => {
       const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
-        'a[data-one-tab-link]',
+        `a[${UNIQUE_TAB_LINK_ATTR}]`,
       )
       if (!anchor?.href || event.button !== 1) return
       event.preventDefault()
@@ -354,14 +355,14 @@ function registerLinkClickTracking(): void {
     'click',
     (event) => {
       const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
-        'a[data-one-tab-link]',
+        `a[${UNIQUE_TAB_LINK_ATTR}]`,
       )
       if (!anchor?.href) return
       if (event.button !== 0) return
 
       event.preventDefault()
       event.stopPropagation()
-      void navigateOneTabLink(anchor, true)
+      void navigateUniqueTabLink(anchor, true)
     },
     true,
   )
@@ -370,14 +371,14 @@ function registerLinkClickTracking(): void {
     'auxclick',
     (event) => {
       const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>(
-        'a[data-one-tab-link]',
+        `a[${UNIQUE_TAB_LINK_ATTR}]`,
       )
       if (!anchor?.href) return
       if (event.button !== 1) return
 
       event.preventDefault()
       event.stopPropagation()
-      void navigateOneTabLink(anchor, false)
+      void navigateUniqueTabLink(anchor, false)
     },
     true,
   )

@@ -1969,7 +1969,7 @@ function AppInner({
     const a = document.createElement('a')
     const stamp = new Date().toISOString().slice(0, 10)
     a.href = url
-    a.download = `onetab-manager-grupos-${stamp}.json`
+    a.download = `unique-tab-manager-grupos-${stamp}.json`
     a.click()
     URL.revokeObjectURL(url)
     setGroupsImportStatus(t('status.exportGenerated'))

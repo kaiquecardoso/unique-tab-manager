@@ -17,12 +17,14 @@ import {
 import { PREFERENCES_STORAGE_KEY } from './lib/preferencesStorage'
 import { saveGroupsLocally } from './lib/groupsNotify'
 import { registerLivePixUrlMarkListeners } from './lib/livepixNotify'
-
-registerLivePixUrlMarkListeners()
+import { migrateLegacyStorageKeys } from './lib/storageKeyMigration'
 import { calendarDayKey } from './lib/calendarDay'
 import { resolveDuplicateBeforeSave } from './lib/duplicateResolution'
 import { findSavedTabByUrl } from './lib/savedTabLookup'
 import type { SavedTab, TabGroup } from './types/tabs'
+
+void migrateLegacyStorageKeys()
+registerLivePixUrlMarkListeners()
 
 type ContextLinkDraft = {
   url: string
@@ -357,7 +359,7 @@ async function showToastByScript(
       toastIsLoading = false,
       toastTitle?: string,
     ) => {
-      const toastId = 'one-tab-manager-toast'
+      const toastId = 'unique-tab-manager-toast'
       const existing = document.getElementById(toastId)
       if (existing) existing.remove()
       const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -427,7 +429,7 @@ async function showToastByScript(
         spinner.style.borderTopColor = isDarkMode ? '#f4f4f5' : '#18181b'
         spinner.style.borderRadius = '999px'
         spinner.style.flex = '0 0 auto'
-        spinner.style.animation = 'one-tab-manager-spin 720ms linear infinite'
+        spinner.style.animation = 'unique-tab-manager-spin 720ms linear infinite'
         title.appendChild(spinner)
       }
 
@@ -437,7 +439,7 @@ async function showToastByScript(
 
       const style = document.createElement('style')
       style.textContent = `
-        @keyframes one-tab-manager-spin {
+        @keyframes unique-tab-manager-spin {
           to { transform: rotate(360deg); }
         }
       `

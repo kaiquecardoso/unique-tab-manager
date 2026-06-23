@@ -1,6 +1,6 @@
 # Unique Tab Manager
 
-Extensão para **Google Chrome** (Manifest V3) inspirada no conceito do OneTab: ao salvar uma aba, ela é **fechada no navegador** e guardada em uma lista local para você reabrir quando quiser, sem deixar dezenas de guias abertas.
+Extensão para **Google Chrome** (Manifest V3) que organiza suas abas: ao salvar uma guia, ela é **fechada no navegador** e guardada em uma lista local para você reabrir quando quiser, sem deixar dezenas de guias abertas.
 
 Os dados ficam **apenas no seu navegador** (`chrome.storage.local`). Não há conta, servidor nem sincronização em nuvem.
 

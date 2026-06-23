@@ -5,7 +5,7 @@ import { isHostnameExcluded, hostnameFromUrl } from './excludedSites'
 import { isSocialVideoTabUrl } from './socialVideoHosts'
 
 export const CONTEXT_MENU = {
-  OPEN_LIST: 'open-onetab',
+  OPEN_LIST: 'open-unique-tab',
   SAVE_WINDOW: 'save-window',
   SAVE_TAB_GROUP: 'save-tab-group',
   SAVE_SELECTED: 'save-selected',
@@ -18,7 +18,7 @@ export const CONTEXT_MENU = {
   SAVE_ALL_WINDOWS: 'save-all-windows',
   SEP_2: 'sep-2',
   TOGGLE_EXCLUDE: 'toggle-exclude-site',
-  SAVE_LINK: 'save-link-onetab',
+  SAVE_LINK: 'save-link-unique-tab',
 } as const
 
 function contextMenuCallback<T>(run: (done: () => void) => T): Promise<T> {

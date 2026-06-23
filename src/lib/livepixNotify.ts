@@ -1,6 +1,5 @@
 import { GROUPS_STORAGE_KEY } from './groupsStorage'
-
-const LIVEPIX_CLICKED_KEY = 'oneTabLivepixClickedUrls'
+import { LIVEPIX_CLICKED_URLS_KEY } from './storageKeys'
 
 const DONATION_PANEL_URL_PATTERNS = [
   'https://dashboard.livepix.gg/*',
@@ -35,6 +34,6 @@ export function registerLivePixUrlMarkListeners(): void {
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return
-    if (changes[GROUPS_STORAGE_KEY] || changes[LIVEPIX_CLICKED_KEY]) refresh()
+    if (changes[GROUPS_STORAGE_KEY] || changes[LIVEPIX_CLICKED_URLS_KEY]) refresh()
   })
 }

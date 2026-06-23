@@ -279,7 +279,7 @@ export const ptBR: Messages = {
   'context.allowSite': 'Permitir este site no Unique Tab Manager',
   'context.saveLink': 'Salvar link no Unique Tab Manager',
 
-  'livepix.saveToOneTab': 'Salvar no Unique Tab',
+  'livepix.saveToUniqueTab': 'Salvar no Unique Tab',
   'livepix.saveLink': 'Salvar link no Unique Tab',
   'livepix.noLink': 'Nenhum link na mensagem',
 

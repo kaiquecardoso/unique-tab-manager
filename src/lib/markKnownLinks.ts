@@ -5,8 +5,9 @@ import {
   isLivepixLinkClicked,
 } from './livepixClickedLinks'
 
-export const KNOWN_LINK_ATTR = 'data-one-tab-known'
-const LINK_SELECTOR = 'a[data-one-tab-link]'
+export const UNIQUE_TAB_LINK_ATTR = 'data-unique-tab-link'
+export const KNOWN_LINK_ATTR = 'data-unique-tab-known'
+const LINK_SELECTOR = `a[${UNIQUE_TAB_LINK_ATTR}]`
 
 export function setLinkKnownState(anchor: HTMLAnchorElement, known: boolean): void {
   if (known) {

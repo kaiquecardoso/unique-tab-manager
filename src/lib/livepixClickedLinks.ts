@@ -1,7 +1,9 @@
 import { tabUrlKey } from './browserTab'
+import { LEGACY_LIVEPIX_SESSION_KEY } from './storageKeyMigration'
+import { LIVEPIX_CLICKED_URLS_KEY } from './storageKeys'
 
-const STORAGE_KEY = 'oneTabLivepixClickedUrls'
-const LEGACY_SESSION_KEY = 'oneTabLivepixClickedUrls'
+const STORAGE_KEY = LIVEPIX_CLICKED_URLS_KEY
+const LEGACY_SESSION_KEY = LEGACY_LIVEPIX_SESSION_KEY
 const RETENTION_MS = 3 * 24 * 60 * 60 * 1000
 
 const clickedAtByKey = new Map<string, number>()

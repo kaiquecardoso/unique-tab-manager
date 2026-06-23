@@ -5,14 +5,23 @@ import {
   isSupportedLocale,
   type SupportedLocale,
 } from '../i18n'
+import { migrateLegacyStorageKeys } from './storageKeyMigration'
+import {
+  PREFERENCES_STORAGE_KEY,
+  PREFERENCES_WRITE_SOURCE_KEY,
+  SIMPLE_LAYOUT_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+} from './storageKeys'
 
-export const PREFERENCES_STORAGE_KEY = 'oneTabPreferencesV1'
-export const PREFERENCES_WRITE_SOURCE_KEY = 'oneTabPreferencesWriteSourceV1'
+export {
+  PREFERENCES_STORAGE_KEY,
+  PREFERENCES_WRITE_SOURCE_KEY,
+  THEME_STORAGE_KEY,
+  SIMPLE_LAYOUT_STORAGE_KEY,
+} from './storageKeys'
 
 export type PreferencesWriteSource = 'local' | 'remote'
-export const THEME_STORAGE_KEY = 'one-tab-manager-theme'
 export const THEME_BOOT_ATTR = 'data-theme-boot'
-export const SIMPLE_LAYOUT_STORAGE_KEY = 'one-tab-manager-simple-layout'
 
 const THEME_MAIN_BG: Record<'light' | 'dark', string> = {
   light: '#f5f5f7',
@@ -116,6 +125,7 @@ export async function migrateLegacyPreferences(): Promise<void> {
 }
 
 export async function loadLocalPreferences(): Promise<UserPreferences> {
+  await migrateLegacyStorageKeys()
   await migrateLegacyPreferences()
   const record = await chrome.storage.local.get(PREFERENCES_STORAGE_KEY)
   const raw = record[PREFERENCES_STORAGE_KEY]

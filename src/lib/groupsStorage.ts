@@ -1,8 +1,8 @@
 import type { SavedTab, TabGroup } from '../types/tabs'
 import { normalizeTagsArray } from './tags'
+import { GROUPS_STORAGE_KEY, GROUPS_WRITE_SOURCE_KEY } from './storageKeys'
 
-export const GROUPS_STORAGE_KEY = 'oneTabGroupsV1'
-export const GROUPS_WRITE_SOURCE_KEY = 'oneTabGroupsWriteSourceV1'
+export { GROUPS_STORAGE_KEY, GROUPS_WRITE_SOURCE_KEY } from './storageKeys'
 
 export type GroupsWriteSource = 'local' | 'remote'
 

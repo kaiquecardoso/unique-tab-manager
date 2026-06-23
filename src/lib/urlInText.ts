@@ -1,4 +1,6 @@
 /** Detecta URLs em texto corrido (http(s), www. e dominios comuns sem esquema). */
+import { UNIQUE_TAB_LINK_ATTR } from './markKnownLinks'
+
 export const URL_IN_TEXT_REGEX =
   /\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|gg|io|dev|app|br|tv|me|co|be)(?:\/[^\s<>"']*)?/gi
 
@@ -39,13 +41,13 @@ export type LinkifyOptions = {
   accent?: boolean
 }
 
-function applyOneTabLinkStyles(
+function applyUniqueTabLinkStyles(
   anchor: HTMLAnchorElement,
   options?: LinkifyOptions,
 ): void {
   anchor.target = '_blank'
   anchor.rel = 'noopener noreferrer'
-  anchor.dataset.oneTabLink = 'true'
+  anchor.dataset.uniqueTabLink = 'true'
   if (options?.accent) {
     anchor.style.color = '#40db6a'
     anchor.style.textDecoration = 'underline'
@@ -62,16 +64,16 @@ export function markExistingAnchorsInElement(
   if (anchors.length === 0) return false
 
   for (const anchor of anchors) {
-    if (anchor.dataset.oneTabLink === 'true') continue
+    if (anchor.dataset.uniqueTabLink === 'true') continue
     try {
       if (!anchor.href) continue
-      applyOneTabLinkStyles(anchor, options)
+      applyUniqueTabLinkStyles(anchor, options)
     } catch {
       // href inválido
     }
   }
 
-  element.dataset.oneTabLinkified = 'true'
+  element.dataset.uniqueTabLinkified = 'true'
   return true
 }
 
@@ -80,7 +82,9 @@ export function primaryUrlFromMessageElement(
 ): string | undefined {
   if (!element) return undefined
 
-  const marked = element.querySelector<HTMLAnchorElement>('a[data-one-tab-link][href]')
+  const marked = element.querySelector<HTMLAnchorElement>(
+    `a[${UNIQUE_TAB_LINK_ATTR}][href]`,
+  )
   if (marked?.href) {
     try {
       return new URL(marked.href).href
@@ -105,8 +109,8 @@ export function linkifyTextElement(
   element: HTMLElement,
   options?: LinkifyOptions,
 ): boolean {
-  if (element.dataset.oneTabLinkified === 'true') return false
-  if (element.querySelector('a[data-one-tab-link]')) return false
+  if (element.dataset.uniqueTabLinkified === 'true') return false
+  if (element.querySelector(`a[${UNIQUE_TAB_LINK_ATTR}]`)) return false
 
   if (markExistingAnchorsInElement(element, options)) return true
 
@@ -129,7 +133,7 @@ export function linkifyTextElement(
     const anchor = document.createElement('a')
     anchor.href = normalizeUrl(raw)
     anchor.textContent = raw
-    applyOneTabLinkStyles(anchor, options)
+    applyUniqueTabLinkStyles(anchor, options)
 
     fragment.appendChild(anchor)
     lastIndex = index + raw.length
@@ -140,6 +144,6 @@ export function linkifyTextElement(
   }
 
   element.replaceChildren(fragment)
-  element.dataset.oneTabLinkified = 'true'
+  element.dataset.uniqueTabLinkified = 'true'
   return true
 }
